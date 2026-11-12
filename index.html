@@ -42,6 +42,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .app{max-width:1280px;margin:0 auto;padding:14px 16px 32px;display:grid;gap:14px;grid-template-columns:1fr}
 @media (min-width:960px){.app{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start}}
 @media (max-width:959px){.side #detail{order:2}.side #detail.idle{display:none}}
+@media (max-width:519px){.panel.p-orbit{padding:12px 6px}.panel.p-orbit .ph{padding:0 8px}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
 .ph{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px}
 .ph h2{margin:0;font-size:15px;color:var(--sub);font-weight:600;letter-spacing:.2px}
@@ -58,7 +59,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 
 /* 궤도 */
 .orbit-wrap{position:relative;width:100%;max-width:620px;margin:0 auto;aspect-ratio:1/1}
-#orbit{width:100%;height:100%;display:block}
+#orbit{width:100%;height:100%;display:block;overflow:visible}
 .node{cursor:pointer}
 .node:focus{outline:none}
 .node:focus-visible .ring{stroke:var(--gold);stroke-width:3}
@@ -78,6 +79,11 @@ button{font:inherit;color:inherit;cursor:pointer}
 .row .nums div{min-width:38px}
 .row .nums b{display:block;font-size:17px;line-height:1.2}
 .row .nums small{font-size:11px;color:var(--dim)}
+.cat-h{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;margin-top:8px;padding:6px 4px;background:none;border:0;border-bottom:1px solid var(--line);text-align:left}
+.cat-h:first-child{margin-top:0}
+.cat-h b{font-size:16px}
+.cat-h small{margin-left:auto;font-size:12px;color:var(--sub)}
+.cat-h[aria-pressed="true"] b{color:var(--gold)}
 .tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:6px;margin-left:6px;vertical-align:1px}
 .tag.new{background:#2B2A10;color:#F3D66B}
 .tag.off{background:#3A2A08;color:#FFD88A}
@@ -143,7 +149,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
         <div class="kpi"><small>관제 중인 앱</small><b class="num" id="kApps">–</b><em id="kTracked">카운터 –</em></div>
       </div>
     </section>
-    <section class="panel">
+    <section class="panel p-orbit">
       <div class="ph"><h2>궤도 현황</h2><span class="meta num" id="upd">—</span></div>
       <div class="orbit-wrap">
         <svg id="orbit" viewBox="0 0 600 600" role="img" aria-label="앱별 이용 궤도도"></svg>
@@ -154,6 +160,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
         <span><i style="background:var(--today)"></i>오늘 사용</span>
         <span><i style="background:var(--idle)"></i>오늘 없음</span>
         <span><i style="background:transparent;border:2px dashed var(--warn)"></i>카운터 미설치</span>
+        <span style="width:100%;text-align:center;color:var(--dim)">큰 원 = 분류 · 작은 원(위성) = 앱 · 위성 안 숫자 = 오늘 사용자</span>
       </div>
     </section>
   </div>
@@ -161,7 +168,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
   <div class="side" style="display:grid;gap:14px">
     <section class="panel" id="detail" aria-live="polite"></section>
     <section class="panel">
-      <div class="ph"><h2>앱 목록</h2><span class="meta">오늘 사용자 순</span></div>
+      <div class="ph"><h2>앱 목록</h2><span class="meta">분류별 · 사용 많은 순</span></div>
       <div class="list" id="list"></div>
     </section>
   </div>
@@ -198,7 +205,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
 <script>
 // ===== 설정(CONFIG) =====
 const CONFIG = {
-  version: '1.0.2', updated: '2026-11-13', org: '구리소방서 · gurifire',
+  version: '1.1.0', updated: '2026-11-13', org: '구리소방서 · gurifire',
   owner: 'gurifire',
   db: 'https://gurichecklist-default-rtdb.asia-southeast1.firebasedatabase.app/_orbit',
   trackUrl: 'https://gurifire.github.io/orbit/track.js',
@@ -211,6 +218,13 @@ const CONFIG = {
     'guri-apart':        { short: '아파트', full: '구리시 공동주택 소방시설 지도' },
     '-app':              { short: '지원반', full: '긴급구조지원반 체크리스트' }
   },
+  // 분류: 큰 원(분류) 둘레를 앱이 위성으로 돈다. 새 저장소는 키워드로 자동 분류, 안 맞으면 '미분류'
+  categories: [
+    { key: 'response', label: '재난대응', match: '지원반|체크리스트|대응|출동|현장|구조|구급|통제|소방지도|공동주택' },
+    { key: 'prevent',  label: '화재예방', match: '건축|소방시설|검토|점검|예방|민원|안전관리' },
+    { key: 'life',     label: '생활·외부', match: '태권도|가계부|생활|개인|도장' }
+  ],
+  assign: { '-app': 'response', 'guri-apart': 'response', 'fire-construction': 'prevent', 'lkstkd': 'life' },
   pollSec: 20, liveSec: 150, repoCacheMin: 10, chartDays: 14
 };
 
@@ -269,7 +283,7 @@ async function loadRepos(force) {
     if (!r.ok) throw new Error('http');
     const arr = await r.json();
     S.repos = arr.filter(x => x.has_pages && !x.fork && !x.archived && !x.private && !CONFIG.exclude.includes(x.name))
-      .map(x => ({ name: x.name, desc: x.description || '', pushed: Date.parse(x.pushed_at) || 0, url: x.html_url }));
+      .map(x => ({ name: x.name, desc: x.description || '', pushed: Date.parse(x.pushed_at) || 0, url: x.html_url, topics: x.topics || [] }));
     S.repoAt = Date.now(); S.repoErr = '';
     store.set('repos', S.repos); store.set('repoAt', S.repoAt);
   } catch (e) {
@@ -296,7 +310,7 @@ function appMeta(name) {
   const n = CONFIG.names[name];
   if (n) return n;
   const t = S.titles[name];
-  if (t) { const first = t.split(/\s[-–·|:]\s|·|\|/)[0].trim(); return { short: first.slice(0, 6), full: t }; }
+  if (t) { const first = t.split(/\s[-–·|:]\s|·|\|/)[0].trim(); return { short: first.split(/\s+/)[0].slice(0, 4), full: t }; }
   return { short: name.replace(/^-/, '').slice(0, 8) || name, full: name };
 }
 
@@ -351,7 +365,7 @@ function appRows() {
     const td = ((S.daily || {})[today] || {})[name] || {};
     let wk = 0; for (let i = 0; i < 7; i++) wk += (((S.daily || {})[kstDate(i)] || {})[name] || {}).u || 0;
     return {
-      name, repo, meta: appMeta(name), tracked: !!st || S.installed[name] !== false, waiting: !st,
+      name, repo, meta: appMeta(name), cat: catOf(name, repo), tracked: !!st || S.installed[name] !== false, waiting: !st,
       live: S.live[name] || 0, todayU: td.u || 0, todayV: td.v || 0, week: wk,
       users: (st && st.u) || 0, visits: (st && st.v) || 0, last: (st && st.last) || 0,
       isNew: repo.pushed && !CONFIG.names[name] && (Date.now() - repo.pushed < 7 * 86400e3)
@@ -365,9 +379,9 @@ const stateOf = r => !r.tracked ? 'off' : r.live > 0 ? 'live' : r.todayU > 0 ? '
 const COLOR = { live: 'var(--live)', today: 'var(--today)', idle: 'var(--idle)', off: 'var(--warn)' };
 
 // ===== 화면 그리기 =====
-let dirty = true, ROWS = [], POS = {};
+let dirty = true, ROWS = [], POS = {}, CATPOS = {};
 const SVGNS = 'http://www.w3.org/2000/svg';
-const C = 300, R = 200;
+const C = 300;
 
 function render() {
   ROWS = appRows();
@@ -391,91 +405,149 @@ function render() {
 
 function el(tag, attrs, parent) { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
 
+// ===== 분류 =====
+// 저장소 → 분류 결정 순서: ① CONFIG.assign 지정 ② 저장소 topic "orbit-<분류키>" ③ 이름·제목·설명 키워드 ④ 미분류
+function catOf(name, repo) {
+  if (CONFIG.assign[name]) return CONFIG.assign[name];
+  const tp = (repo.topics || []).find(t => t.startsWith('orbit-'));
+  if (tp && CONFIG.categories.some(c => c.key === tp.slice(6))) return tp.slice(6);
+  const text = `${name} ${S.titles[name] || ''} ${repo.desc || ''}`;
+  const hit = CONFIG.categories.find(c => c.match && new RegExp(c.match, 'i').test(text));
+  return hit ? hit.key : 'etc';
+}
+const CATS_ALL = () => [...CONFIG.categories, { key: 'etc', label: '미분류' }];
+function catGroups() {
+  return CATS_ALL().map(c => ({ ...c, apps: ROWS.filter(r => r.cat === c.key) })).filter(c => c.apps.length);
+}
+const rank = { live: 3, today: 2, idle: 1, off: 0 };
+function catState(c) { let best = 'idle'; c.apps.forEach(r => { const s = stateOf(r); if (s !== 'off' && rank[s] > rank[best]) best = s; }); return best; }
+
 function drawOrbit() {
   const svg = $('orbit');
-  const k = $('orbit').getBoundingClientRect().width < 520 ? 1.45 : 1;
+  const mob = svg.getBoundingClientRect().width < 520, k = mob ? 1.6 : 1; // k: 글자 배율
   $('orbitEmpty').style.display = ROWS.length ? 'none' : 'flex';
   if (!ROWS.length && S.repos) $('orbitEmpty').textContent = 'GitHub Pages가 켜진 공개 저장소가 없습니다. 저장소 설정에서 Pages를 켜면 여기에 나타납니다.';
   svg.textContent = '';
-  // 배경 링·눈금
-  el('circle', { cx: C, cy: C, r: 262, fill: 'none', stroke: '#1C2742', 'stroke-width': 1 }, svg);
-  for (let h = 0; h < 24; h++) {
-    const a = (h / 24) * 2 * Math.PI - Math.PI / 2, r1 = h % 6 ? 256 : 250;
-    el('line', { x1: C + Math.cos(a) * r1, y1: C + Math.sin(a) * r1, x2: C + Math.cos(a) * 262, y2: C + Math.sin(a) * 262, stroke: '#2A3758', 'stroke-width': h % 6 ? 1 : 2 }, svg);
-  }
-  // 오늘 경과(한국 시간) 금색 호
+  // 바깥 링: 오늘 경과 시간(한국 시간)
+  const groups = catGroups(), nC = groups.length;
+  // 폰: 글자는 키우고 도형 간격은 좁혀 화면을 꽉 채움
+  const hubR = mob ? 40 : 52, catR = mob ? 40 : 32, appR = mob ? 17 : 16;
+  const labHW = Math.min(4, Math.max(3, ...ROWS.map(r => r.meta.short.length))) * 6 * k; // 가장 긴 이름표 반폭
+  let rc = mob ? catR + appR + 8 : Math.max(catR + appR + 12, 70);
+  const RC = nC <= 1 ? 0 : hubR + rc + appR + 5 + labHW + 4; // 안쪽을 지날 때 이름표가 중앙 원에 닿지 않게
+  if (nC >= 2) rc = Math.min(rc, Math.max(catR + appR + 4, RC * Math.sin(Math.PI / nC) - appR - 10));
+  const OR = Math.min(296, RC + rc + appR + 5 + labHW + 6);
+  const vb = Math.ceil(OR + 6); svg.setAttribute('viewBox', `${C - vb} ${C - vb} ${vb * 2} ${vb * 2}`);
+  el('circle', { cx: C, cy: C, r: OR, fill: 'none', stroke: '#1C2742', 'stroke-width': 1 }, svg);
   const nowK = new Date(Date.now() + 9 * 3600e3), frac = (nowK.getUTCHours() * 60 + nowK.getUTCMinutes()) / 1440;
   const a1 = frac * 2 * Math.PI - Math.PI / 2, large = frac > .5 ? 1 : 0;
-  el('path', { d: `M ${C} ${C - 270} A 270 270 0 ${large} 1 ${C + Math.cos(a1) * 270} ${C + Math.sin(a1) * 270}`, fill: 'none', stroke: 'var(--gold)', 'stroke-width': 3, 'stroke-linecap': 'round', opacity: .85 }, svg);
-  if (k === 1) [['0시', -90], ['6시', 0], ['12시', 90], ['18시', 180]].forEach(([t, deg]) => { const a = deg * Math.PI / 180; el('text', { x: C + Math.cos(a) * 284, y: C + Math.sin(a) * 284 + 4, 'text-anchor': 'middle', fill: '#66728C', 'font-size': 12 }, svg).textContent = t; });
-  el('circle', { cx: C, cy: C, r: R, fill: 'none', stroke: '#24314F', 'stroke-width': 1.5, 'stroke-dasharray': '3 6' }, svg);
-  el('circle', { cx: C, cy: C, r: 120, fill: 'none', stroke: '#1C2742', 'stroke-width': 1 }, svg);
+  el('path', { d: `M ${C} ${C - OR} A ${OR} ${OR} 0 ${large} 1 ${C + Math.cos(a1) * OR} ${C + Math.sin(a1) * OR}`, fill: 'none', stroke: 'var(--gold)', 'stroke-width': 3, 'stroke-linecap': 'round', opacity: .8 }, svg);
 
-  // 노드 위치
-  const n = ROWS.length; POS = {};
-  ROWS.forEach((r, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / Math.max(n, 1); POS[r.name] = { x: C + Math.cos(a) * R, y: C + Math.sin(a) * R, a }; });
+  POS = {}; CATPOS = {};
+  el('circle', { cx: C, cy: C, r: RC, fill: 'none', stroke: '#24314F', 'stroke-width': 1.2, 'stroke-dasharray': '3 6' }, svg);
 
-  // 연결선
-  ROWS.forEach(r => { const p = POS[r.name], st = stateOf(r); el('line', { x1: C, y1: C, x2: p.x, y2: p.y, stroke: st === 'live' ? '#2A6B4A' : '#1F2A45', 'stroke-width': st === 'live' ? 2 : 1, 'stroke-dasharray': st === 'off' ? '4 6' : '' }, svg); });
+  groups.forEach((g, i) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / Math.max(nC, 1);
+    const p = CATPOS[g.key] = { x: C + Math.cos(a) * RC, y: C + Math.sin(a) * RC, rc };
+    const st = catState(g);
+    // 본선(중앙 → 분류)
+    el('line', { x1: C, y1: C, x2: p.x, y2: p.y, stroke: st === 'live' ? '#2A6B4A' : '#2A3758', 'stroke-width': 2 }, svg);
+    // 위성 궤도
+    el('circle', { cx: p.x, cy: p.y, r: rc, fill: 'none', stroke: '#2A3758', 'stroke-width': 1, 'stroke-dasharray': '2 5' }, svg);
+  });
 
-  // 중앙
-  el('circle', { cx: C, cy: C, r: 70 * k, fill: '#101A31', stroke: '#2A3758', 'stroke-width': 1.5 }, svg);
-  const total = ROWS.reduce((a, r) => a + r.live, 0);
-  el('text', { x: C, y: C - 22 * k, 'text-anchor': 'middle', fill: '#9AA6C0', 'font-size': 13 * k }, svg).textContent = '지금 접속';
-  el('text', { x: C, y: C + 16 * k, 'text-anchor': 'middle', fill: total ? '#3DDC84' : '#EEF1F7', 'font-size': 40 * k, 'font-weight': 700, class: 'num' }, svg).textContent = total;
-  el('text', { x: C, y: C + 40 * k, 'text-anchor': 'middle', fill: '#66728C', 'font-size': 12 * k }, svg).textContent = `오늘 ${ROWS.reduce((a, r) => a + r.todayU, 0)}명`;
+  // 앱 위성 (분류 노드 둘레를 회전)
+  groups.forEach(g => {
+    const p = CATPOS[g.key], m = g.apps.length;
+    g.apps.forEach((r, j) => {
+      const st = stateOf(r), col = COLOR[st], sel = S.sel === r.name;
+      const gg = el('g', { class: 'node sat', tabindex: 0, role: 'button', 'aria-label': `${r.meta.full}, 지금 ${r.live}명, 오늘 ${r.todayU}명`, 'data-app': r.name, 'data-cx': p.x, 'data-cy': p.y, 'data-rc': rc, 'data-ph': -Math.PI / 2 + j * 2 * Math.PI / m + (j % 2 ? .25 : 0) }, svg);
+      if (st === 'live') {
+        const pr = el('circle', { cx: 0, cy: 0, r: appR, fill: 'none', stroke: col, 'stroke-width': 2 }, gg);
+        el('animate', { attributeName: 'r', from: appR, to: appR + 12 * k, dur: '2s', repeatCount: 'indefinite' }, pr);
+        el('animate', { attributeName: 'opacity', from: .7, to: 0, dur: '2s', repeatCount: 'indefinite' }, pr);
+      }
+      el('circle', { cx: 0, cy: 0, r: appR, fill: '#121C34', class: 'ring', stroke: sel ? 'var(--gold)' : col, 'stroke-width': sel ? 3.5 : 2.5, 'stroke-dasharray': st === 'off' ? '4 3' : '' }, gg);
+      el('text', { x: 0, y: 4 * k, 'text-anchor': 'middle', fill: st === 'off' ? '#F5A524' : '#EEF1F7', 'font-size': 12 * k, 'font-weight': 700, class: 'num' }, gg).textContent = st === 'off' ? '!' : r.waiting ? '–' : r.todayU;
+      // 이름표: 분류 중심에서 바깥쪽으로 붙어 돌아 분류 원과 겹치지 않음
+      el('text', { class: 'lbl', x: 0, y: appR + 13 * k, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#C9D1E3', 'font-size': 12 * k, 'font-weight': 600, 'paint-order': 'stroke', stroke: '#111A30', 'stroke-width': 4, 'data-hw': r.meta.short.length * 6 * k, 'data-hh': 7 * k, 'data-ar': appR + 5 }, gg).textContent = r.meta.short;
+      gg.addEventListener('click', () => select(r.name));
+      gg.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(r.name); } });
+    });
+  });
+  // 중앙: 운영 현황(앱·분류) — 위성보다 위에 그려 지나가는 이름표를 가림
+  el('circle', { cx: C, cy: C, r: hubR, fill: '#101A31', stroke: '#2A3758', 'stroke-width': 1.5 }, svg);
+  if (!mob) el('text', { x: C, y: C - 22, 'text-anchor': 'middle', fill: '#9AA6C0', 'font-size': 11 }, svg).textContent = '운영 앱';
+  el('text', { x: C, y: C + (mob ? 6 : 11), 'text-anchor': 'middle', fill: '#EEF1F7', 'font-size': mob ? 34 : 32, 'font-weight': 700, class: 'num' }, svg).textContent = ROWS.length;
+  el('text', { x: C, y: C + (mob ? 25 : 30), 'text-anchor': 'middle', fill: '#D4A017', 'font-size': mob ? 13 : 11 }, svg).textContent = mob ? `앱 · 분류 ${nC}` : `분류 ${nC}개`;
 
-  // 신호 점 그룹
   el('g', { id: 'pingLayer' }, svg);
 
-  // 노드
-  const maxT = Math.max(1, ...ROWS.map(r => r.todayU));
-  ROWS.forEach(r => {
-    const p = POS[r.name], st = stateOf(r), col = COLOR[st];
-    const rad = (30 + Math.round(12 * Math.sqrt(r.todayU / maxT))) * k, lbl = r.meta.short, fs = (lbl.length > 4 ? 11 : lbl.length > 3 ? 13 : 16) * k;
-    const g = el('g', { class: 'node', tabindex: 0, role: 'button', 'aria-label': `${r.meta.full}, 지금 ${r.live}명, 오늘 ${r.todayU}명`, 'data-app': r.name }, svg);
-    if (st === 'live') {
-      const pr = el('circle', { cx: p.x, cy: p.y, r: rad, fill: 'none', stroke: col, 'stroke-width': 2 }, g);
-      el('animate', { attributeName: 'r', from: rad, to: rad + 18, dur: '2s', repeatCount: 'indefinite' }, pr);
-      el('animate', { attributeName: 'opacity', from: .7, to: 0, dur: '2s', repeatCount: 'indefinite' }, pr);
-    }
-    el('circle', { cx: p.x, cy: p.y, r: rad, fill: '#121C34', class: 'ring', stroke: r.name === S.sel ? 'var(--gold)' : col, 'stroke-width': r.name === S.sel ? 3.5 : 2.5, 'stroke-dasharray': st === 'off' ? '5 4' : '' }, g);
-    el('text', { x: p.x, y: p.y + 2 * k, 'text-anchor': 'middle', fill: '#EEF1F7', 'font-size': fs, 'font-weight': 700 }, g).textContent = lbl;
-    el('text', { x: p.x, y: p.y + 18 * k, 'text-anchor': 'middle', fill: st === 'off' ? '#F5A524' : '#9AA6C0', 'font-size': 11 * k, class: 'num' }, g).textContent = st === 'off' ? '미설치' : r.waiting ? '집계 대기' : `${r.live}·${r.todayU}`;
-    // 접속 중 위성
-    const sat = el('g', { 'data-sat': r.name, 'data-r': rad + 9 * k, 'data-x': p.x, 'data-y': p.y }, g);
-    for (let k = 0; k < Math.min(r.live, 8); k++) el('circle', { r: 3.2 * k, fill: 'var(--live)', 'data-k': k, 'data-n': Math.min(r.live, 8) }, sat);
-    g.addEventListener('click', () => select(r.name));
-    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(r.name); } });
+  // 분류 노드
+  groups.forEach(g => {
+    const p = CATPOS[g.key], st = catState(g), sel = S.sel === 'cat:' + g.key;
+    const gg = el('g', { class: 'node', tabindex: 0, role: 'button', 'aria-label': `${g.label} 분류, 앱 ${g.apps.length}개` }, svg);
+    el('circle', { cx: p.x, cy: p.y, r: catR, fill: '#18254A', class: 'ring', stroke: sel ? 'var(--gold)' : COLOR[st], 'stroke-width': sel ? 3.5 : 2.5 }, gg);
+    el('text', { x: p.x, y: p.y + 2 * k, 'text-anchor': 'middle', fill: '#EEF1F7', 'font-size': (g.label.length > 4 ? 11.5 : 13) * k, 'font-weight': 700 }, gg).textContent = g.label;
+    el('text', { x: p.x, y: p.y + 15 * k, 'text-anchor': 'middle', fill: '#9AA6C0', 'font-size': 10 * k }, gg).textContent = `앱 ${g.apps.length}개`;
+    gg.addEventListener('click', () => select('cat:' + g.key));
+    gg.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select('cat:' + g.key); } });
   });
+
+  placeSats(performance.now());
 }
 
-function drawList() {
-  const rows = [...ROWS].sort((a, b) => b.live - a.live || b.todayU - a.todayU || b.users - a.users || a.name.localeCompare(b.name));
-  $('list').innerHTML = rows.length ? rows.map(r => {
-    const st = stateOf(r);
-    return `<button class="row" data-app="${esc(r.name)}" aria-pressed="${r.name === S.sel}">
+function rowHTML(r) {
+  const st = stateOf(r);
+  return `<button class="row" data-app="${esc(r.name)}" aria-pressed="${r.name === S.sel}">
       <span class="dot" style="background:${COLOR[st]}"></span>
       <span style="min-width:0"><div class="nm">${esc(r.meta.full)}${r.isNew ? '<span class="tag new">새 앱</span>' : ''}${!r.tracked ? '<span class="tag off">카운터 미설치</span>' : ''}</div>
       <div class="sb">${esc(r.name)} · ${r.waiting && r.tracked ? '카운터 연결됨, 첫 접속 대기' : '최근 접속 ' + esc(ago(r.last))}</div></span>
       <span class="nums num"><div><b style="color:${r.live ? 'var(--live)' : 'inherit'}">${r.live}</b><small>지금</small></div><div><b>${fmt(r.todayU)}</b><small>오늘</small></div><div><b>${fmt(r.users)}</b><small>누적</small></div></span>
     </button>`;
-  }).join('') : '<p class="note">표시할 앱이 없습니다.</p>';
+}
+const byUse = (a, b) => b.live - a.live || b.todayU - a.todayU || b.users - a.users || a.name.localeCompare(b.name);
+function drawList() {
+  const groups = catGroups();
+  $('list').innerHTML = groups.length ? groups.map(g => `
+    <button class="cat-h" data-app="cat:${esc(g.key)}" aria-pressed="${S.sel === 'cat:' + g.key}">
+      <span class="dot" style="background:${COLOR[catState(g)]}"></span><b>${esc(g.label)}</b><small>앱 ${g.apps.length}개 · 오늘 ${fmt(g.apps.reduce((a, r) => a + r.todayU, 0))}명</small>
+    </button>${[...g.apps].sort(byUse).map(rowHTML).join('')}`).join('') : '<p class="note">표시할 앱이 없습니다.</p>';
 }
 
 function drawDetail() {
   const box = $('detail');
+  if (S.sel && S.sel.startsWith('cat:')) {
+    const g = catGroups().find(c => 'cat:' + c.key === S.sel);
+    if (g) {
+      const sum = key => g.apps.reduce((a, r) => a + r[key], 0);
+      box.classList.remove('idle');
+      box.innerHTML = `
+        <div class="dt-head"><span class="dot" style="background:${COLOR[catState(g)]};margin-top:8px"></span>
+          <div style="min-width:0"><h3>${esc(g.label)}</h3><p>분류 · 앱 ${g.apps.length}개</p></div></div>
+        <div class="grid3">
+          <div class="cell"><small>지금 접속</small><b class="num" style="color:${sum('live') ? 'var(--live)' : 'inherit'}">${sum('live')}</b></div>
+          <div class="cell"><small>오늘 사용자</small><b class="num">${fmt(sum('todayU'))}</b></div>
+          <div class="cell"><small>누적 사용자</small><b class="num">${fmt(sum('users'))}</b></div>
+        </div>
+        <div class="list" style="margin-top:10px">${[...g.apps].sort(byUse).map(rowHTML).join('')}</div>
+        <p class="note">분류 변경: 저장소 topic에 <code>orbit-${CONFIG.categories.map(c => c.key).join('</code> / <code>orbit-')}</code> 중 하나를 붙이면 그 분류로 옮겨집니다.</p>`;
+      box.querySelectorAll('[data-app]').forEach(b => b.addEventListener('click', () => select(b.dataset.app)));
+      return;
+    }
+  }
   const r = ROWS.find(x => x.name === S.sel) || null;
   box.classList.toggle('idle', !r);
   if (!r) {
-    box.innerHTML = `<div class="ph"><h2>앱 상세</h2></div><p class="note" style="margin:0">궤도의 앱 노드나 아래 목록을 누르면 이용 추이와 바로가기가 여기에 나옵니다.</p>`;
+    box.innerHTML = `<div class="ph"><h2>상세</h2></div><p class="note" style="margin:0">궤도의 분류(큰 원)나 앱 위성(작은 원)을 누르면 이용 추이와 바로가기가 여기에 나옵니다.</p>`;
     return;
   }
   const st = stateOf(r);
+  const cat = CATS_ALL().find(c => c.key === r.cat);
   const pageUrl = `https://${CONFIG.owner}.github.io/${encodeURIComponent(r.name)}/`;
   box.innerHTML = `
     <div class="dt-head"><span class="dot" style="background:${COLOR[st]};margin-top:8px"></span>
-      <div style="min-width:0"><h3>${esc(r.meta.full)}</h3><p>${esc(r.name)}${r.repo.desc ? ' · ' + esc(r.repo.desc) : ''}</p></div></div>
+      <div style="min-width:0"><h3>${esc(r.meta.full)}</h3><p>${esc(cat ? cat.label : '')} · ${esc(r.name)}${r.repo.desc ? ' · ' + esc(r.repo.desc) : ''}</p></div></div>
     ${r.tracked ? `
     <div class="grid3">
       <div class="cell"><small>지금 접속</small><b class="num" style="color:${r.live ? 'var(--live)' : 'inherit'}">${r.live}</b></div>
@@ -513,19 +585,28 @@ function chart(name) {
   return s + '</svg>';
 }
 
-// ===== 움직임(위성·신호 점) =====
-function animate(t) {
-  document.querySelectorAll('[data-sat]').forEach(g => {
-    const x = +g.dataset.x, y = +g.dataset.y, rr = +g.dataset.r;
-    g.querySelectorAll('circle').forEach(c => { const a = t / 1400 + (+c.dataset.k) * 2 * Math.PI / (+c.dataset.n); c.setAttribute('cx', x + Math.cos(a) * rr); c.setAttribute('cy', y + Math.sin(a) * rr); });
+// ===== 움직임(위성 회전·신호 점) =====
+const SPIN_MS = 120000; // 위성 한 바퀴 2분 (눌러서 고르기 쉽게 천천히)
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function placeSats(t) {
+  const w = reduceMotion ? 0 : t * 2 * Math.PI / SPIN_MS;
+  document.querySelectorAll('.sat').forEach(g => {
+    const a = +g.dataset.ph + w, x = +g.dataset.cx + Math.cos(a) * g.dataset.rc, y = +g.dataset.cy + Math.sin(a) * g.dataset.rc;
+    g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+    const lb = g.querySelector('.lbl');
+    if (lb) { const cx = Math.cos(a), cy = Math.sin(a), d = +lb.dataset.ar + Math.abs(cx) * lb.dataset.hw + Math.abs(cy) * lb.dataset.hh; lb.setAttribute('x', (cx * d).toFixed(1)); lb.setAttribute('y', (cy * d).toFixed(1)); }
+    POS[g.dataset.app] = { x, y };
   });
+}
+function animate(t) {
+  placeSats(t);
   const layer = $('pingLayer');
   if (layer) {
     layer.textContent = '';
     S.pings = S.pings.filter(p => t - p.t0 < 1600);
     S.pings.forEach(p => {
-      const q = (t - p.t0) / 1600, pos = POS[p.app]; if (q < 0 || !pos) return;
-      el('circle', { cx: pos.x + (C - pos.x) * q, cy: pos.y + (C - pos.y) * q, r: 5, fill: 'var(--gold)', opacity: 1 - q * .6 }, layer);
+      const q = (t - p.t0) / 1600, pos = POS[p.app], row = ROWS.find(r => r.name === p.app), cp = row && CATPOS[row.cat]; if (q < 0 || !pos || !cp) return;
+      el('circle', { cx: pos.x + (cp.x - pos.x) * q, cy: pos.y + (cp.y - pos.y) * q, r: 5, fill: 'var(--gold)', opacity: 1 - q * .6 }, layer);
     });
   }
   requestAnimationFrame(animate);
