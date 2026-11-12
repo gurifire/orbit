@@ -198,7 +198,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
 <script>
 // ===== 설정(CONFIG) =====
 const CONFIG = {
-  version: '1.0.0', updated: '2026-11-12', org: '구리소방서 · gurifire',
+  version: '1.0.1', updated: '2026-11-12', org: '구리소방서 · gurifire',
   owner: 'gurifire',
   db: 'https://gurichecklist-default-rtdb.asia-southeast1.firebasedatabase.app/_orbit',
   trackUrl: 'https://gurifire.github.io/orbit/track.js',
@@ -255,7 +255,8 @@ let S = {
   live: {},                             // {app: count}
   dbOk: null, dbErr: '', repoErr: '', lastPoll: 0,
   sel: store.get('sel', null),
-  pings: []
+  pings: [],
+  installed: {}                         // {app: true/false} 페이지 확인 결과
 };
 
 // ===== 저장소 자동 발견 =====
@@ -271,20 +272,25 @@ async function loadRepos(force) {
       .map(x => ({ name: x.name, desc: x.description || '', pushed: Date.parse(x.pushed_at) || 0, url: x.html_url }));
     S.repoAt = Date.now(); S.repoErr = '';
     store.set('repos', S.repos); store.set('repoAt', S.repoAt);
-    S.repos.forEach(x => { if (!CONFIG.names[x.name] && !S.titles[x.name]) fetchTitle(x.name); });
   } catch (e) {
     S.repoErr = (e.message === 'limit' ? 'GitHub 조회 한도(시간당 60회)에 걸렸습니다. ' : '저장소 목록을 새로 받지 못했습니다. ')
       + (S.repos ? '마지막으로 받은 목록을 보여줍니다.' : '기본 앱 4개로 표시하고 잠시 뒤 다시 시도합니다.');
     if (!S.repos) S.repos = Object.keys(CONFIG.names).map(n => ({ name: n, desc: '', pushed: 0, url: `https://github.com/${CONFIG.owner}/${n}` }));
   }
 }
-async function fetchTitle(name) {
+// 각 앱 페이지를 열어 제목과 카운터 설치 여부(track.js 포함 여부)를 확인 (같은 주소 안이라 허용됨)
+const checked = {};
+async function checkPage(name) {
+  if (checked[name]) return; checked[name] = true;
   try {
-    const r = await fetchT(`/${encodeURIComponent(name)}/`, {}, 8000);
-    if (!r.ok) return;
-    const m = (await r.text()).match(/<title>([^<]{1,120})<\/title>/i);
-    if (m) { S.titles[name] = m[1].trim(); store.set('titles', S.titles); dirty = true; }
-  } catch {}
+    const r = await fetchT(`/${encodeURIComponent(name)}/`, { cache: 'no-store' }, 8000);
+    if (!r.ok) { checked[name] = false; return; }
+    const html = await r.text();
+    S.installed[name] = html.includes('orbit/track.js');
+    const m = html.match(/<title>([^<]{1,120})<\/title>/i);
+    if (m) { S.titles[name] = m[1].trim(); store.set('titles', S.titles); }
+    dirty = true;
+  } catch { checked[name] = false; }
 }
 function appMeta(name) {
   const n = CONFIG.names[name];
@@ -345,7 +351,7 @@ function appRows() {
     const td = ((S.daily || {})[today] || {})[name] || {};
     let wk = 0; for (let i = 0; i < 7; i++) wk += (((S.daily || {})[kstDate(i)] || {})[name] || {}).u || 0;
     return {
-      name, repo, meta: appMeta(name), tracked: !!st || S.dbOk !== true, unknown: !st && S.dbOk !== true,
+      name, repo, meta: appMeta(name), tracked: !!st || S.installed[name] !== false, waiting: !st,
       live: S.live[name] || 0, todayU: td.u || 0, todayV: td.v || 0, week: wk,
       users: (st && st.u) || 0, visits: (st && st.v) || 0, last: (st && st.last) || 0,
       isNew: repo.pushed && !CONFIG.names[name] && (Date.now() - repo.pushed < 7 * 86400e3)
@@ -372,7 +378,7 @@ function render() {
   $('kUsers').textContent = fmt(sum('users'));
   $('kVisits').textContent = `방문 ${fmt(sum('visits'))}`;
   $('kApps').textContent = fmt(ROWS.length);
-  $('kTracked').textContent = `카운터 ${ROWS.filter(r => r.tracked).length}개 설치`;
+  $('kTracked').textContent = `카운터 ${ROWS.filter(r => S.installed[r.name] || !r.waiting).length}개 설치`;
   $('sub').textContent = `${CONFIG.owner} · Pages 앱 ${ROWS.length}개 자동 관제`;
   $('upd').textContent = S.lastPoll ? `${kstHM(S.lastPoll)} 갱신 · ${CONFIG.pollSec}초마다` : (S.dbOk === false ? '갱신 실패' : '불러오는 중');
 
@@ -435,7 +441,7 @@ function drawOrbit() {
     }
     el('circle', { cx: p.x, cy: p.y, r: rad, fill: '#121C34', class: 'ring', stroke: r.name === S.sel ? 'var(--gold)' : col, 'stroke-width': r.name === S.sel ? 3.5 : 2.5, 'stroke-dasharray': st === 'off' ? '5 4' : '' }, g);
     el('text', { x: p.x, y: p.y + 2 * k, 'text-anchor': 'middle', fill: '#EEF1F7', 'font-size': fs, 'font-weight': 700 }, g).textContent = lbl;
-    el('text', { x: p.x, y: p.y + 18 * k, 'text-anchor': 'middle', fill: st === 'off' ? '#F5A524' : '#9AA6C0', 'font-size': 11 * k, class: 'num' }, g).textContent = st === 'off' ? '미설치' : `${r.live}·${r.todayU}`;
+    el('text', { x: p.x, y: p.y + 18 * k, 'text-anchor': 'middle', fill: st === 'off' ? '#F5A524' : '#9AA6C0', 'font-size': 11 * k, class: 'num' }, g).textContent = st === 'off' ? '미설치' : r.waiting ? '집계 대기' : `${r.live}·${r.todayU}`;
     // 접속 중 위성
     const sat = el('g', { 'data-sat': r.name, 'data-r': rad + 9 * k, 'data-x': p.x, 'data-y': p.y }, g);
     for (let k = 0; k < Math.min(r.live, 8); k++) el('circle', { r: 3.2 * k, fill: 'var(--live)', 'data-k': k, 'data-n': Math.min(r.live, 8) }, sat);
@@ -451,7 +457,7 @@ function drawList() {
     return `<button class="row" data-app="${esc(r.name)}" aria-pressed="${r.name === S.sel}">
       <span class="dot" style="background:${COLOR[st]}"></span>
       <span style="min-width:0"><div class="nm">${esc(r.meta.full)}${r.isNew ? '<span class="tag new">새 앱</span>' : ''}${!r.tracked ? '<span class="tag off">카운터 미설치</span>' : ''}</div>
-      <div class="sb">${esc(r.name)} · 최근 접속 ${esc(ago(r.last))}</div></span>
+      <div class="sb">${esc(r.name)} · ${r.waiting && r.tracked ? '카운터 연결됨, 첫 접속 대기' : '최근 접속 ' + esc(ago(r.last))}</div></span>
       <span class="nums num"><div><b style="color:${r.live ? 'var(--live)' : 'inherit'}">${r.live}</b><small>지금</small></div><div><b>${fmt(r.todayU)}</b><small>오늘</small></div><div><b>${fmt(r.users)}</b><small>누적</small></div></span>
     </button>`;
   }).join('') : '<p class="note">표시할 앱이 없습니다.</p>';
@@ -554,9 +560,9 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
   const tick = () => { const d = new Date(Date.now() + 9 * 3600e3); $('clock').textContent = d.toISOString().slice(11, 16); };
   tick(); setInterval(tick, 10000);
   render(); requestAnimationFrame(animate);
-  await loadRepos(false); render();
+  await loadRepos(false); (S.repos || []).forEach(x => checkPage(x.name)); render();
   await poll(); render();
-  setInterval(async () => { if (!document.hidden) { await loadRepos(false); await poll(); } }, CONFIG.pollSec * 1000);
+  setInterval(async () => { if (!document.hidden) { await loadRepos(false); (S.repos || []).forEach(x => checkPage(x.name)); await poll(); } }, CONFIG.pollSec * 1000);
   setInterval(() => { if (dirty) { dirty = false; render(); } }, 1000);
 })();
 </script>
