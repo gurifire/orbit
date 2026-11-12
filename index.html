@@ -198,7 +198,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
 <script>
 // ===== 설정(CONFIG) =====
 const CONFIG = {
-  version: '1.0.1', updated: '2026-11-12', org: '구리소방서 · gurifire',
+  version: '1.0.2', updated: '2026-11-13', org: '구리소방서 · gurifire',
   owner: 'gurifire',
   db: 'https://gurichecklist-default-rtdb.asia-southeast1.firebasedatabase.app/_orbit',
   trackUrl: 'https://gurifire.github.io/orbit/track.js',
@@ -531,12 +531,23 @@ function animate(t) {
   requestAnimationFrame(animate);
 }
 
+// ===== 새 버전 자동 적용 =====
+// 탭을 오래 띄워 두면 옛 코드가 계속 도는 문제 방지: 서버의 index.html 버전이 다르면 자동 새로고침
+async function checkUpdate() {
+  try {
+    const r = await fetchT(location.pathname + '?v=' + Date.now(), { cache: 'no-store' }, 8000);
+    if (!r.ok) return;
+    const m = (await r.text()).match(/version:\s*'([\d.]+)'/);
+    if (m && m[1] !== CONFIG.version) { toast(`새 버전 v${m[1]} 적용 중…`); setTimeout(() => location.reload(), 800); }
+  } catch {}
+}
+
 // ===== 이벤트 =====
 function select(name) { S.sel = S.sel === name ? null : name; store.set('sel', S.sel); render(); if (S.sel && innerWidth < 960) $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 $('list').addEventListener('click', e => { const b = e.target.closest('[data-app]'); if (b) select(b.dataset.app); });
 async function copySnippet() { try { await navigator.clipboard.writeText(SNIPPET); toast('복사했습니다'); } catch { toast('복사가 막혀 있습니다. 글자를 길게 눌러 복사하세요'); } }
 $('btnCopySnip').addEventListener('click', copySnippet);
-$('btnRefresh').addEventListener('click', async () => { const b = $('btnRefresh'); b.disabled = true; await poll(); render(); b.disabled = false; toast('갱신했습니다'); });
+$('btnRefresh').addEventListener('click', async () => { const b = $('btnRefresh'); b.disabled = true; checkUpdate(); Object.keys(checked).forEach(k => delete checked[k]); (S.repos || []).forEach(x => checkPage(x.name)); await poll(); render(); b.disabled = false; toast('갱신했습니다'); });
 $('btnMenu').addEventListener('click', () => { $('swNoTrack').checked = raw.get('orbit:notrack') === '1'; $('dlgMenu').showModal(); });
 $('btnClose').addEventListener('click', () => $('dlgMenu').close());
 $('swNoTrack').addEventListener('change', e => { raw.set('orbit:notrack', e.target.checked ? '1' : null); toast(e.target.checked ? '이 기기는 이제 집계하지 않습니다' : '이 기기도 다시 집계합니다'); });
@@ -550,7 +561,7 @@ $('btnCsv').addEventListener('click', () => {
 addEventListener('resize', () => { dirty = true; });
 const syncOnline = () => { dirty = true; if (navigator.onLine) poll(); };
 addEventListener('online', syncOnline); addEventListener('offline', syncOnline);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll(); checkUpdate(); } });
 
 // ===== 시작 =====
 (async function boot() {
@@ -564,6 +575,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
   await poll(); render();
   setInterval(async () => { if (!document.hidden) { await loadRepos(false); (S.repos || []).forEach(x => checkPage(x.name)); await poll(); } }, CONFIG.pollSec * 1000);
   setInterval(() => { if (dirty) { dirty = false; render(); } }, 1000);
+  setTimeout(checkUpdate, 5000); setInterval(() => { if (!document.hidden) checkUpdate(); }, 5 * 60e3);
 })();
 </script>
 </body>
