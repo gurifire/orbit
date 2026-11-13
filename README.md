@@ -7,14 +7,28 @@ gurifire 계정의 GitHub Pages 웹앱을 궤도 화면으로 모아 보고, 앱
 - `track.js` : 각 앱에 넣는 이용자 카운터 (모든 앱 공통 한 줄)
 
 ## 새 앱 추가
-1. 새 저장소에서 GitHub Pages를 켠다 → 최대 10분 뒤 궤도에 자동으로 노드가 생긴다.
-2. 그 앱 index.html의 `</body>` 바로 앞에 한 줄 추가 → 이용자 수가 집계된다.
+### 방법 A — 오비트에서 바로 반영 (권장)
+1. gurifire에 공개 저장소를 만들고 맨 위에 `index.html`을 올린다.
+2. 오비트 아래 **[저장소 반영]** → **미반영** 목록에 나타난 저장소를 체크 → 분류 선택 → **[선택 반영]**.
+3. 자동 처리: 궤도 포함 + 분류 저장(config.json) + 카운터 한 줄 설치 + GitHub Pages 켜기. 1~2분 뒤 궤도에 나타난다.
+
+처음 한 번은 관리자 토큰 등록이 필요하다 (메뉴 → 관리자 토큰).
+fine-grained token · All repositories · Contents / Pages / Administration = Read and write · 90일.
+토큰은 그 기기 브라우저에만 저장된다.
+
+### 방법 B — 수동
+1. 저장소 Settings → Pages → main 켜기 → 최대 10분 뒤 궤도에 자동 등장 (분류는 키워드로 자동, 안 맞으면 미분류).
+2. index.html의 `</body>` 앞에 카운터 한 줄 추가:
 
 ```html
 <script async src="https://gurifire.github.io/orbit/track.js"></script>
 ```
 
-궤도에서 빼고 싶은 저장소는 `index.html`의 `CONFIG.exclude`에 이름을 넣는다.
+## 공용 설정 config.json
+제외 목록(`exclude`), 분류 지정(`assign`), 앱 표시 이름(`names`). 오비트 관리 화면에서 바뀌며, 직접 고쳐도 된다.
+분류 키: `response`(재난대응) · `prevent`(화재예방) · `life`(생활·외부) · `etc`(미분류).
+
+
 
 ## 데이터 저장 위치
 Firebase Realtime Database `gurichecklist` 의 `/_orbit` 경로 (지원반 데이터 `sessions` 와 분리).
