@@ -276,7 +276,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
 <script>
 // ===== 설정(CONFIG) =====
 const CONFIG = {
-  version: '1.4.0', updated: '2026-11-14', org: '구리소방서 · gurifire',
+  version: '1.4.1', updated: '2026-11-14', org: '구리소방서 · gurifire',
   owner: 'gurifire',
   // 관제할 계정·조직 (첫 번째가 오비트 본체 계정). 새 조직을 만들면 여기에 추가
   owners: ['gurifire', 'lkstkd', 'ilsangtool'],
@@ -631,10 +631,14 @@ function drawOrbit() {
   // 폰: 글자는 키우고 도형 간격은 좁혀 화면을 꽉 채움
   const hubR = mob ? 40 : 52, catR = mob ? 40 : 32, appR = mob ? 17 : 16;
   const labHW = Math.min(4, Math.max(3, ...ROWS.map(r => r.meta.short.length))) * 6 * k; // 가장 긴 이름표 반폭
-  let rc = mob ? catR + appR + 8 : Math.max(catR + appR + 12, 70);
-  const RC = nC <= 1 ? 0 : hubR + rc + appR + 5 + labHW + 4; // 안쪽을 지날 때 이름표가 중앙 원에 닿지 않게
-  if (nC >= 2) rc = Math.min(rc, Math.max(catR + appR + 4, RC * Math.sin(Math.PI / nC) - appR - 10));
-  const OR = Math.min(296, RC + rc + appR + 5 + labHW + 6 + moonX);
+  // 겹침 방지: ① 위성·가지가 분류 원에 닿지 않는 거리 ② 위성은 중앙 반대쪽 부채꼴에만 배치(살짝 흔들림)
+  //           → 중앙 원·옆 분류와 겹치지 않음 ③ 이름표 전체 폭까지 화면 안에
+  const fan = nC > 1;
+  const rc = catR + appR + moonX + (mob ? 6 : 14);
+  const RC = !fan ? 0 : Math.max(hubR + catR + (mob ? 22 : 30), nC > 4 ? (rc + appR + moonX) / Math.sin(Math.PI / nC) : 0);
+  const OR = RC + rc + appR + 5 + moonX + labHW * 2 + 6;
+  const arc = (cx, cy, r, a0, a1) => `M ${cx + Math.cos(a0) * r} ${cy + Math.sin(a0) * r} A ${r} ${r} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${cx + Math.cos(a1) * r} ${cy + Math.sin(a1) * r}`;
+  const spreadOf = m => m <= 1 ? 0 : Math.min(Math.PI * 1.1, (m - 1) * 0.8); // 위성 간격 약 46°
   const vb = Math.ceil(OR + 6); svg.setAttribute('viewBox', `${C - vb} ${C - vb} ${vb * 2} ${vb * 2}`);
   el('circle', { cx: C, cy: C, r: OR, fill: 'none', stroke: '#1C2742', 'stroke-width': 1 }, svg);
   const nowK = new Date(Date.now() + 9 * 3600e3), frac = (nowK.getUTCHours() * 60 + nowK.getUTCMinutes()) / 1440;
@@ -646,12 +650,14 @@ function drawOrbit() {
 
   groups.forEach((g, i) => {
     const a = -Math.PI / 2 + i * 2 * Math.PI / Math.max(nC, 1);
-    const p = CATPOS[g.key] = { x: C + Math.cos(a) * RC, y: C + Math.sin(a) * RC, rc };
+    const p = CATPOS[g.key] = { x: C + Math.cos(a) * RC, y: C + Math.sin(a) * RC, rc, a };
     const st = catState(g);
     // 본선(중앙 → 분류)
     el('line', { x1: C, y1: C, x2: p.x, y2: p.y, stroke: st === 'live' ? '#2A6B4A' : '#2A3758', 'stroke-width': 2 }, svg);
-    // 위성 궤도
-    el('circle', { cx: p.x, cy: p.y, r: rc, fill: 'none', stroke: '#2A3758', 'stroke-width': 1, 'stroke-dasharray': '2 5' }, svg);
+    // 위성 궤도 (부채꼴 배치면 바깥쪽 호만)
+    const sp = spreadOf(g.apps.length);
+    if (fan) el('path', { d: arc(p.x, p.y, rc, a - sp / 2 - .45, a + sp / 2 + .45), fill: 'none', stroke: '#2A3758', 'stroke-width': 1, 'stroke-dasharray': '2 5' }, svg);
+    else el('circle', { cx: p.x, cy: p.y, r: rc, fill: 'none', stroke: '#2A3758', 'stroke-width': 1, 'stroke-dasharray': '2 5' }, svg);
   });
 
   // 앱 위성 (분류 노드 둘레를 회전)
@@ -659,7 +665,9 @@ function drawOrbit() {
     const p = CATPOS[g.key], m = g.apps.length;
     g.apps.forEach((r, j) => {
       const st = stateOf(r), col = COLOR[st], sel = S.sel === r.name;
-      const gg = el('g', { class: 'node sat', tabindex: 0, role: 'button', 'aria-label': `${r.meta.full}, 지금 ${r.live}명, 오늘 ${r.todayU}명${r.subs.length ? `, 내부 앱 ${r.subs.length}개(누르면 펼침)` : ''}`, 'data-app': r.name, 'data-cx': p.x, 'data-cy': p.y, 'data-rc': rc, 'data-ph': -Math.PI / 2 + j * 2 * Math.PI / m + (j % 2 ? .25 : 0) }, svg);
+      const gg = el('g', { class: 'node sat', tabindex: 0, role: 'button', 'aria-label': `${r.meta.full}, 지금 ${r.live}명, 오늘 ${r.todayU}명${r.subs.length ? `, 내부 앱 ${r.subs.length}개(누르면 펼침)` : ''}`, 'data-app': r.name, 'data-cx': p.x, 'data-cy': p.y, 'data-rc': rc, ...(fan
+        ? { 'data-ph': p.a - spreadOf(m) / 2 + (m > 1 ? j * spreadOf(m) / (m - 1) : 0), 'data-sway': .1, 'data-sp': p.a }
+        : { 'data-ph': -Math.PI / 2 + j * 2 * Math.PI / m + (j % 2 ? .25 : 0) }) }, svg);
       if (st === 'live') {
         const pr = el('circle', { cx: 0, cy: 0, r: appR, fill: 'none', stroke: col, 'stroke-width': 2 }, gg);
         el('animate', { attributeName: 'r', from: appR, to: appR + 12 * k, dur: '2s', repeatCount: 'indefinite' }, pr);
@@ -840,7 +848,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function placeSats(t) {
   const w = reduceMotion ? 0 : t * 2 * Math.PI / SPIN_MS;
   document.querySelectorAll('.sat').forEach(g => {
-    const a = +g.dataset.ph + w, x = +g.dataset.cx + Math.cos(a) * g.dataset.rc, y = +g.dataset.cy + Math.sin(a) * g.dataset.rc;
+    const a = +g.dataset.ph + (g.dataset.sway ? (reduceMotion ? 0 : Math.sin(t / 9000 + +g.dataset.sp) * g.dataset.sway) : w), x = +g.dataset.cx + Math.cos(a) * g.dataset.rc, y = +g.dataset.cy + Math.sin(a) * g.dataset.rc;
     g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
     const lb = g.querySelector('.lbl');
     if (lb) { const cx = Math.cos(a), cy = Math.sin(a), d = +lb.dataset.ar + Math.abs(cx) * lb.dataset.hw + Math.abs(cy) * lb.dataset.hh; lb.setAttribute('x', (cx * d).toFixed(1)); lb.setAttribute('y', (cy * d).toFixed(1)); }
