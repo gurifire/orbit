@@ -9,7 +9,8 @@
     "guri-apart": "response",
     "fire-construction": "prevent",
     "lkstkd": "life",
-    "HOME_FINANCE": "life"
+    "HOME_FINANCE": "life",
+    "tools": "life"
   },
   "names": {
     "lkstkd": {
@@ -27,6 +28,10 @@
     "-app": {
       "short": "지원반",
       "full": "긴급구조지원반 체크리스트"
+    },
+    "tools": {
+      "short": "일상툴",
+      "full": "일상툴 도구 모음"
     }
   },
   "updated": "2026-11-13 11:04",

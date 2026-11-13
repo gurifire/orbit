@@ -266,6 +266,8 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
 const CONFIG = {
   version: '1.2.0', updated: '2026-11-13', org: '구리소방서 · gurifire',
   owner: 'gurifire',
+  // 관제할 계정·조직 (첫 번째가 오비트 본체 계정). 새 조직을 만들면 여기에 추가
+  owners: ['gurifire', 'lkstkd', 'ilsangtool'],
   db: 'https://gurichecklist-default-rtdb.asia-southeast1.firebasedatabase.app/_orbit',
   trackUrl: 'https://gurifire.github.io/orbit/track.js',
   // 아래 exclude·names·assign은 config.json이 없을 때의 기본값 (실제 값은 config.json, 관리 화면에서 수정)
@@ -337,10 +339,11 @@ let S = {
 
 // ===== 공용 설정(config.json) =====
 // 제외 목록·분류 지정·앱 이름은 orbit 저장소 config.json에 저장 → 모든 기기가 같은 설정을 봄 (관리 화면에서 수정)
-const HARD_EXCLUDE = ['orbit', `${CONFIG.owner}.github.io`];
+const HARD_EXCLUDE = ['orbit', ...CONFIG.owners.map(o => `${o}.github.io`)];
 let SET = { exclude: CONFIG.exclude.slice(), assign: { ...CONFIG.assign }, names: { ...CONFIG.names }, links: { ...CONFIG.links } };
-const pageOf = n => (SET.links[n] && SET.links[n].page) || `https://${CONFIG.owner}.github.io/${encodeURIComponent(n)}/`;
-const repoOf = n => (SET.links[n] && SET.links[n].repo) || `https://github.com/${CONFIG.owner}/${n}`;
+const ownerOf = n => { const x = (S.allRepos || []).find(r => r.name === n); return (x && x.owner) || CONFIG.owner; };
+const pageOf = n => (SET.links[n] && SET.links[n].page) || `https://${ownerOf(n)}.github.io/${encodeURIComponent(n)}/`;
+const repoOf = n => (SET.links[n] && SET.links[n].repo) || `https://github.com/${ownerOf(n)}/${n}`;
 const cfgCore = d => JSON.stringify({ e: [...(d.exclude || [])].sort(), a: d.assign || {}, n: d.names || {} });
 function deriveRepos() { if (S.allRepos) S.repos = S.allRepos.filter(x => x.pages && !SET.exclude.includes(x.name)); }
 function applySettings(d) {
@@ -371,12 +374,22 @@ async function loadRepos(force) {
   const fresh = S.repos && (Date.now() - S.repoAt < CONFIG.repoCacheMin * 60e3);
   if (fresh && !force) return;
   try {
-    const r = await fetchT(`https://api.github.com/users/${CONFIG.owner}/repos?per_page=100&sort=pushed`, { headers: { Accept: 'application/vnd.github+json' } });
-    if (r.status === 403 || r.status === 429) throw new Error('limit');
-    if (!r.ok) throw new Error('http');
-    const arr = await r.json();
+    // 여러 계정·조직을 동시에 조회. 일부만 실패하면 받은 것만 쓰고, 전부 실패하면 오류 처리
+    const res = await Promise.all(CONFIG.owners.map(async o => {
+      try {
+        const r = await fetchT(`https://api.github.com/users/${o}/repos?per_page=100&sort=pushed`, { headers: { Accept: 'application/vnd.github+json' } });
+        if (r.status === 403 || r.status === 429) return { err: 'limit' };
+        if (!r.ok) return { err: 'http' };
+        return { arr: await r.json() };
+      } catch { return { err: 'http' }; }
+    }));
+    const ok = res.filter(x => x.arr);
+    if (!ok.length) throw new Error(res.some(x => x.err === 'limit') ? 'limit' : 'http');
+    const seen = new Set(), arr = [];
+    ok.forEach(x => x.arr.forEach(y => { if (!seen.has(y.name)) { seen.add(y.name); arr.push(y); } }));
     S.allRepos = arr.filter(x => !x.fork && !x.archived && !x.private && !HARD_EXCLUDE.includes(x.name))
-      .map(x => ({ name: x.name, desc: x.description || '', pushed: Date.parse(x.pushed_at) || 0, url: x.html_url, topics: x.topics || [], pages: !!x.has_pages || (Date.now() - (PAGES_ON[x.name] || 0) < 10 * 60e3), branch: x.default_branch || 'main' }));
+      .sort((a, b) => (Date.parse(b.pushed_at) || 0) - (Date.parse(a.pushed_at) || 0))
+      .map(x => ({ name: x.name, owner: (x.owner && x.owner.login) || CONFIG.owner, desc: x.description || '', pushed: Date.parse(x.pushed_at) || 0, url: x.html_url, topics: x.topics || [], pages: !!x.has_pages || (Date.now() - (PAGES_ON[x.name] || 0) < 10 * 60e3), branch: x.default_branch || 'main' }));
     deriveRepos();
     S.repoAt = Date.now(); S.repoErr = '';
     store.set('repos', S.repos); store.set('allRepos', S.allRepos); store.set('repoAt', S.repoAt);
@@ -391,7 +404,7 @@ const checked = {}, FRESH = {}, PAGES_ON = {}; // FRESH: 관리 화면에서 방
 async function checkPage(name) {
   if (checked[name]) return; checked[name] = true;
   try {
-    const r = await fetchT((SET.links[name] && SET.links[name].page) || `/${encodeURIComponent(name)}/`, { cache: 'no-store' }, 8000);
+    const r = await fetchT((SET.links[name] && SET.links[name].page) || (ownerOf(name) === CONFIG.owner ? `/${encodeURIComponent(name)}/` : pageOf(name)), { cache: 'no-store' }, 8000);
     if (!r.ok) { checked[name] = false; return; }
     const html = await r.text();
     S.installed[name] = html.includes('orbit/track.js') || (Date.now() - (FRESH[name] || 0) < 5 * 60e3);
@@ -487,7 +500,7 @@ function render() {
   $('kVisits').textContent = `방문 ${fmt(sum('visits'))}`;
   $('kApps').textContent = fmt(ROWS.length);
   $('kTracked').textContent = `카운터 ${ROWS.filter(r => S.installed[r.name] || !r.waiting).length}개 설치`;
-  $('sub').textContent = `${CONFIG.owner} · Pages 앱 ${ROWS.length}개 자동 관제`;
+  $('sub').textContent = `${CONFIG.owners.join(' · ')} · Pages 앱 ${ROWS.length}개 자동 관제`;
   $('upd').textContent = S.lastPoll ? `${kstHM(S.lastPoll)} 갱신 · ${CONFIG.pollSec}초마다` : (S.dbOk === false ? '갱신 실패' : '불러오는 중');
 
   $('bnOffline').classList.toggle('show', !navigator.onLine);
@@ -754,7 +767,7 @@ function insertTracker(html) {
   if (i < 0) return html.replace(/\s*$/, '\n') + line;
   return html.slice(0, i) + (html[i - 1] === '\n' ? '' : '\n') + line + html.slice(i);
 }
-const repoPath = (repo, p) => `/repos/${CONFIG.owner}/${encodeURIComponent(repo)}/contents/${p}`;
+const repoPath = (repo, p) => `/repos/${repo === 'orbit' ? CONFIG.owner : ownerOf(repo)}/${encodeURIComponent(repo)}/contents/${p}`;
 async function ghFile(repo, p, ref) {
   const u = repoPath(repo, p) + (ref ? `?ref=${encodeURIComponent(ref)}` : '');
   const r = await gh(u, { cache: 'no-store' }, [404]);
@@ -772,7 +785,7 @@ async function ghFile(repo, p, ref) {
 const ghPut = (repo, p, text, sha, branch, message) =>
   gh(repoPath(repo, p), { method: 'PUT', body: JSON.stringify({ message, content: b64enc(text), ...(sha ? { sha } : {}), ...(branch ? { branch } : {}) }) });
 async function ghPages(repo, branch) {
-  const r = await gh(`/repos/${CONFIG.owner}/${encodeURIComponent(repo)}/pages`, { method: 'POST', body: JSON.stringify({ build_type: 'legacy', source: { branch, path: '/' } }) }, [409]);
+  const r = await gh(`/repos/${ownerOf(repo)}/${encodeURIComponent(repo)}/pages`, { method: 'POST', body: JSON.stringify({ build_type: 'legacy', source: { branch, path: '/' } }) }, [409]);
   return r.status; // 201 켬, 409 이미 켜짐
 }
 // 공용 설정 저장: 최신 config.json을 받아 바꾼 뒤 저장 (동시 수정 충돌 시 1회 재시도)
