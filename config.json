@@ -9,7 +9,7 @@
     "guri-apart": "response",
     "fire-construction": "prevent",
     "lkstkd": "life",
-    "HOME_FINANCE": "etc"
+    "HOME_FINANCE": "life"
   },
   "names": {
     "lkstkd": {
@@ -29,5 +29,5 @@
       "full": "긴급구조지원반 체크리스트"
     }
   },
-  "updated": "2026-11-13 11:02"
+  "updated": "2026-11-13 11:04"
 }
