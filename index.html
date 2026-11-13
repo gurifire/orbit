@@ -145,17 +145,13 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .msel{min-height:44px;font:inherit;font-size:16px;border-radius:10px;border:1px solid var(--line);background:#0E1730;color:var(--text);padding:0 8px;max-width:140px}
 .mres{grid-column:1/-1;font-size:13px;color:var(--sub);padding-left:34px}
 .mres.ok{color:#8BEBB5}.mres.err{color:#FFB3B3}
-@media (max-width:480px){.mrow{grid-template-columns:1fr}.msel{max-width:none;margin-left:34px}}
+@media (max-width:480px){.mrow{grid-template-columns:1fr}.mcat{margin-left:34px}.msel{max-width:none;flex:1}}
 .mbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;position:sticky;bottom:0;padding:8px 0 calc(4px + env(safe-area-inset-bottom));background:var(--panel)}
 .mbar .wide{grid-column:1/-1}
 .btn:disabled{opacity:.45;cursor:not-allowed}
-.crow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto auto;gap:6px;align-items:center;padding:8px;margin-bottom:6px;border-radius:12px;background:var(--panel2)}
-.crow input,.cadd input{min-height:44px;font:inherit;font-size:16px;border-radius:10px;border:1px solid var(--line);background:#0E1730;color:var(--text);padding:0 10px;width:100%;min-width:0}
-.crow .cnt{grid-column:1/-1;font-size:12px;color:var(--sub)}
-.crow .btn,.cadd .btn{min-height:44px;font-size:14px;padding:0 12px}
-.crow .btn.del{color:var(--danger)}
-.cadd{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px;margin-top:8px}
-@media (max-width:480px){.crow{grid-template-columns:1fr 1fr}.cadd{grid-template-columns:1fr}}
+.mcat{display:flex;gap:6px;align-items:center}
+.madd{min-width:44px;min-height:44px;border-radius:10px;border:1px solid var(--line);background:#0E1730;color:var(--gold);font-size:22px;font-weight:700;line-height:1;cursor:pointer}
+.madd:disabled{opacity:.45;cursor:not-allowed}
 .allok{margin:0 0 6px;font-size:14px;color:#8BEBB5}
 .link{background:none;border:0;padding:4px 2px;color:var(--gold);text-decoration:underline;font-size:13px}
 .fld{display:block;margin-top:12px}.fld span{display:block;font-size:13px;color:var(--sub);margin-bottom:4px}
@@ -215,16 +211,6 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
       <div class="ph"><h2>저장소 반영</h2><span class="meta" id="mgrMeta"></span></div>
       <div id="mgrBody"></div>
     </section>
-    <section class="panel" id="catMgr" aria-label="분류 관리">
-      <div class="ph"><h2>분류 관리</h2><span class="meta" id="catMeta"></span></div>
-      <div id="catList"></div>
-      <form class="cadd" id="catAdd" autocomplete="off">
-        <input id="catNewLabel" maxlength="8" placeholder="새 분류 이름 (예: 수익·외부)" aria-label="새 분류 이름">
-        <input id="catNewMatch" maxlength="120" placeholder="자동 분류 키워드 (쉼표로 구분, 선택)" aria-label="자동 분류 키워드">
-        <button class="btn main" type="submit">분류 추가</button>
-      </form>
-      <p class="note">분류는 최대 8개입니다. 키워드는 저장소 이름·페이지 제목·설명에 들어 있으면 그 분류로 자동 배치합니다. 분류를 삭제하면 그 분류의 앱은 키워드 기준으로 다시 배치되고, 맞는 곳이 없으면 미분류로 갑니다. 저장에는 관리자 토큰이 필요합니다.</p>
-    </section>
   </div>
 </main>
 <footer id="ver"></footer>
@@ -281,7 +267,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
 <script>
 // ===== 설정(CONFIG) =====
 const CONFIG = {
-  version: '1.3.0', updated: '2026-11-13', org: '구리소방서 · gurifire',
+  version: '1.3.1', updated: '2026-11-13', org: '구리소방서 · gurifire',
   owner: 'gurifire',
   // 관제할 계정·조직 (첫 번째가 오비트 본체 계정). 새 조직을 만들면 여기에 추가
   owners: ['gurifire', 'lkstkd', 'ilsangtool'],
@@ -527,7 +513,7 @@ function render() {
   $('bnRepo').textContent = S.repoErr; $('bnRepo').classList.toggle('show', !!S.repoErr);
   $('bnDb').textContent = S.dbErr; $('bnDb').classList.toggle('show', !!S.dbErr && navigator.onLine);
 
-  drawOrbit(); drawList(); drawDetail(); drawMgr(); drawCats();
+  drawOrbit(); drawList(); drawDetail(); drawMgr();
   if (MG.count) $('sub').textContent += ` · 미반영 ${MG.count}`;
 }
 
@@ -857,7 +843,7 @@ function drawMgr() {
     return `<div class="mrow${on ? ' on' : ''}">
       <label class="mchk"><input type="checkbox" data-sel="${esc(n)}"${on ? ' checked' : ''}${dis}>
         <span class="mi"><b>${esc(meta.full)}</b><small>${esc(sub)}</small><span class="chips">${chips.join('')}</span></span></label>
-      <select class="msel" data-cat="${esc(n)}" aria-label="${esc(meta.full)} 분류"${dis}>${opts(cat)}</select>
+      <div class="mcat"><select class="msel" data-cat="${esc(n)}" aria-label="${esc(meta.full)} 분류"${dis}>${opts(cat)}</select><button class="madd" type="button" data-addcat="${esc(n)}" title="새 분류 추가" aria-label="새 분류 추가"${dis}>＋</button></div>
       ${res ? `<div class="mres ${res.ok === true ? 'ok' : res.ok === false ? 'err' : ''}" role="status">${esc(res.text)}</div>` : ''}
     </div>`;
   };
@@ -958,65 +944,27 @@ $('mgrBody').addEventListener('change', e => {
   else if (t.dataset.cat) { MG.cat[t.dataset.cat] = t.value; MG.sel.add(t.dataset.cat); drawMgr(); } // 분류를 바꾸면 자동 체크
 });
 $('mgrBody').addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.g) d.open ? MG.open.add(d.dataset.g) : MG.open.delete(d.dataset.g); }, true);
-$('mgrBody').addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (!b) return; if (b.dataset.act === 'token') openToken(); else runMgr(b.dataset.act); });
+$('mgrBody').addEventListener('click', e => { const a = e.target.closest('[data-addcat]'); if (a) { addCategory(a.dataset.addcat); return; } const b = e.target.closest('[data-act]'); if (!b) return; if (b.dataset.act === 'token') openToken(); else runMgr(b.dataset.act); });
 
-// ===== 분류 관리 =====
-// 목록은 분류 구성·앱 수가 바뀔 때만 다시 그림 → 입력 중인 글자가 지워지지 않음
-const CM = { busy: false, sig: '', del: null };
-const toWords = m => (m || '').split('|').map(w => w.replace(/\\(.)/g, '$1').trim()).filter(Boolean).join(', ');
-const toMatch = t => t.split(/[,，]/).map(w => w.trim()).filter(Boolean).slice(0, 20).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+// ===== 분류 추가 (분류 선택칸 옆 ＋) =====
 const newKey = () => 'c' + Date.now().toString(36).slice(-6);
-function drawCats(force) {
-  const cnt = k => ROWS.filter(r => r.cat === k).length;
-  const sig = JSON.stringify([SET.categories, SET.categories.map(c => cnt(c.key)), cnt('etc'), CM.busy, CM.del, !!getToken()]);
-  if (!force && sig === CM.sig) return; CM.sig = sig;
-  const dis = CM.busy ? ' disabled' : '';
-  $('catMeta').textContent = `${SET.categories.length} / ${CAT_MAX}개`;
-  $('catList').innerHTML = SET.categories.map(c => `<div class="crow" data-key="${esc(c.key)}">
-      <input data-f="label" maxlength="8" value="${esc(c.label)}" aria-label="분류 이름"${dis}>
-      <input data-f="match" maxlength="120" value="${esc(toWords(c.match))}" placeholder="키워드 (쉼표로 구분)" aria-label="${esc(c.label)} 키워드"${dis}>
-      <button class="btn" type="button" data-cact="save"${dis}>저장</button>
-      <button class="btn del" type="button" data-cact="del"${dis}>${CM.del === c.key ? '한 번 더' : '삭제'}</button>
-      <span class="cnt">앱 ${cnt(c.key)}개 · 저장소 topic <code>orbit-${esc(c.key)}</code></span>
-    </div>`).join('') + `<div class="crow"><input value="미분류" disabled aria-label="미분류"><span class="cnt" style="grid-column:2/-1">기본 분류 · 앱 ${cnt('etc')}개 (수정·삭제 불가)</span></div>`;
-  $('catAdd').querySelector('button').disabled = CM.busy || SET.categories.length >= CAT_MAX;
+async function addCategory(n) {
+  if (MG.busy) return;
+  if (!getToken()) { toast('분류를 추가하려면 관리자 토큰을 먼저 등록하세요'); openToken(); return; }
+  if (SET.categories.length >= CAT_MAX) { toast(`분류는 최대 ${CAT_MAX}개까지 만들 수 있습니다`); return; }
+  const label = (prompt('새 분류 이름을 입력하세요 (최대 8자)') || '').trim().slice(0, 8);
+  if (!label) return;
+  const old = CATS_ALL().find(c => c.label === label);
+  if (old) { MG.cat[n] = old.key; MG.sel.add(n); mgrHTML = ''; drawMgr(); toast(`"${label}" 분류가 이미 있어 그 분류를 골랐습니다`); return; }
+  if (!navigator.onLine) { toast('오프라인에서는 추가할 수 없습니다'); return; }
+  const key = newKey(); MG.busy = true; mgrHTML = ''; drawMgr();
+  try {
+    await saveConfig(d => { if (d.categories.length >= CAT_MAX) throw new Error('max'); d.categories.push({ key, label, match: '' }); });
+    MG.cat[n] = key; MG.sel.add(n);
+    toast(`"${label}" 분류를 추가했습니다. [선택 반영]을 누르면 이 앱이 옮겨집니다`);
+  } catch (e) { toast('추가 실패: ' + (e && e.message === 'max' ? `분류는 최대 ${CAT_MAX}개입니다` : ghErrText(e))); }
+  MG.busy = false; mgrHTML = ''; drawMgr(); dirty = true;
 }
-async function catSave(mutate, okMsg) {
-  if (CM.busy) return;
-  if (!getToken()) { toast('분류를 저장하려면 관리자 토큰을 먼저 등록하세요'); openToken(); return; }
-  if (!navigator.onLine) { toast('오프라인에서는 저장할 수 없습니다'); return; }
-  CM.busy = true; drawCats(true);
-  try { await saveConfig(mutate); toast(okMsg); dirty = true; }
-  catch (e) { toast('저장 실패: ' + (e && e.message === 'dup' ? '같은 이름의 분류가 이미 있습니다' : e && e.message === 'max' ? `분류는 최대 ${CAT_MAX}개입니다` : ghErrText(e))); }
-  CM.busy = false; CM.del = null; mgrHTML = ''; drawCats(true); drawMgr();
-}
-$('catAdd').addEventListener('submit', e => {
-  e.preventDefault();
-  const label = $('catNewLabel').value.trim(), match = toMatch($('catNewMatch').value);
-  if (!label) { toast('분류 이름을 입력하세요'); $('catNewLabel').focus(); return; }
-  if (label === '미분류' || SET.categories.some(c => c.label === label)) { toast('같은 이름의 분류가 이미 있습니다'); return; }
-  catSave(d => {
-    if (d.categories.some(c => c.label === label)) throw new Error('dup');
-    if (d.categories.length >= CAT_MAX) throw new Error('max');
-    d.categories.push({ key: newKey(), label, match });
-  }, `"${label}" 분류를 추가했습니다`).then(() => { if (SET.categories.some(c => c.label === label)) { $('catNewLabel').value = ''; $('catNewMatch').value = ''; } });
-});
-$('catList').addEventListener('click', e => {
-  const b = e.target.closest('[data-cact]'); if (!b) return;
-  const row = b.closest('[data-key]'), key = row.dataset.key, cur = SET.categories.find(c => c.key === key); if (!cur) return;
-  if (b.dataset.cact === 'save') {
-    const label = row.querySelector('[data-f=label]').value.trim(), match = toMatch(row.querySelector('[data-f=match]').value);
-    if (!label) { toast('분류 이름을 입력하세요'); return; }
-    if (label === '미분류' || SET.categories.some(c => c.key !== key && c.label === label)) { toast('같은 이름의 분류가 이미 있습니다'); return; }
-    catSave(d => { const c = d.categories.find(x => x.key === key); if (!c) throw new Error('gone'); c.label = label; c.match = match; }, `"${label}" 분류를 저장했습니다`);
-  } else {
-    if (CM.del !== key) { CM.del = key; drawCats(true); setTimeout(() => { if (CM.del === key) { CM.del = null; drawCats(true); } }, 3000); return; }
-    catSave(d => {
-      d.categories = d.categories.filter(x => x.key !== key);
-      Object.keys(d.assign).forEach(n => { if (d.assign[n] === key) delete d.assign[n]; });
-    }, `"${cur.label}" 분류를 삭제했습니다`);
-  }
-});
 
 // ===== 새 버전 자동 적용 =====
 // 탭을 오래 띄워 두면 옛 코드가 계속 도는 문제 방지: 서버의 index.html 버전이 다르면 자동 새로고침
