@@ -1,5 +1,5 @@
 /*
- * gurifire 앱 이용자 카운터 (track.js) v1.0.0 · 2026-11-12
+ * gurifire 앱 이용자 카운터 (track.js) v1.1.0 · 2026-11-14 (폴더 앱 집계 추가)
  * - 각 웹앱에 한 줄만 넣으면 됨:
  *     <script async src="https://gurifire.github.io/orbit/track.js"></script>
  * - 앱 이름은 주소의 첫 폴더(gurifire.github.io/<저장소>/)로 자동 인식 → 새 저장소도 같은 한 줄
@@ -28,6 +28,10 @@
     if (!app) app = loc.pathname.split('/')[1] || 'root';
     app = app.replace(/[.#$\[\]\/]/g, '_').slice(0, 60) || 'root';
     if (app === 'orbit') return;
+    // v1.1: 저장소 안 폴더 앱(예: /tools/date-calc/)은 '저장소~폴더' 키로도 함께 집계 → 오비트에서 내부 앱 가지로 표시
+    var keys = [app];
+    var seg = loc.pathname.split('/');
+    if (!(cs && cs.getAttribute('data-app')) && seg.length >= 3 && /^[A-Za-z0-9_-]{1,40}$/.test(seg[2] || '')) keys.push(app + '~' + seg[2]);
 
     var dev = get('orbit:dev');
     if (!dev) {
@@ -57,25 +61,31 @@
 
     function visit() {
       var day = kstDay();
-      var b = {};
-      var firstEver = get('orbit:u:' + app) !== '1';
-      var firstToday = get('orbit:d:' + app) !== day;
-      b['apps/' + app + '/v'] = INC;
-      b['apps/' + app + '/last'] = TS;
-      b['daily/' + day + '/' + app + '/v'] = INC;
-      if (firstEver) b['apps/' + app + '/u'] = INC;
-      if (firstToday) b['daily/' + day + '/' + app + '/u'] = INC;
-      b['live/' + app + '/' + dev] = TS;
+      var b = {}, marks = [];
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        var firstEver = get('orbit:u:' + k) !== '1';
+        var firstToday = get('orbit:d:' + k) !== day;
+        b['apps/' + k + '/v'] = INC;
+        b['apps/' + k + '/last'] = TS;
+        b['daily/' + day + '/' + k + '/v'] = INC;
+        if (firstEver) b['apps/' + k + '/u'] = INC;
+        if (firstToday) b['daily/' + day + '/' + k + '/u'] = INC;
+        b['live/' + k + '/' + dev] = TS;
+        marks.push([k, firstEver, firstToday]);
+      }
       send(b, function () {
-        if (firstEver) put('orbit:u:' + app, '1');
-        if (firstToday) put('orbit:d:' + app, day);
+        for (var j = 0; j < marks.length; j++) {
+          if (marks[j][1]) put('orbit:u:' + marks[j][0], '1');
+          if (marks[j][2]) put('orbit:d:' + marks[j][0], day);
+        }
       });
     }
 
     function beat() {
       if (document.hidden) return;
       var b = {};
-      b['live/' + app + '/' + dev] = TS;
+      for (var i = 0; i < keys.length; i++) b['live/' + keys[i] + '/' + dev] = TS;
       send(b);
     }
 

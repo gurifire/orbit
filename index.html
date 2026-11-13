@@ -86,6 +86,14 @@ button{font:inherit;color:inherit;cursor:pointer}
 .cat-h[aria-pressed="true"] b{color:var(--gold)}
 .tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:6px;margin-left:6px;vertical-align:1px}
 .tag.new{background:#2B2A10;color:#F3D66B}
+.tag.in{background:#1B2A4F;color:#9CC3FF}
+.row.sub{margin-left:18px;width:calc(100% - 18px);min-height:48px;padding:6px 10px;background:#131D36}
+.row.sub .nm{font-size:14px}
+.row.sub .nums b{font-size:15px}
+.br{color:var(--dim);margin-right:6px}
+.p-orbit{scroll-margin-top:72px}
+.dt-sub{margin:14px 0 6px;font-size:14px;color:var(--sub)}
+.zback{margin-left:auto;margin-right:8px;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--gold);background:transparent;color:var(--gold);font-size:14px;white-space:nowrap}
 .tag.off{background:#3A2A08;color:#FFD88A}
 
 /* 상세 */
@@ -187,7 +195,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
       </div>
     </section>
     <section class="panel p-orbit">
-      <div class="ph"><h2>궤도 현황</h2><span class="meta num" id="upd">—</span></div>
+      <div class="ph"><h2 id="orbitTitle">궤도 현황</h2><button class="zback" id="zoomBack" hidden>← 전체 궤도</button><span class="meta num" id="upd">—</span></div>
       <div class="orbit-wrap">
         <svg id="orbit" viewBox="0 0 600 600" role="img" aria-label="앱별 이용 궤도도"></svg>
         <div class="empty" id="orbitEmpty">저장소 목록을 불러오는 중입니다…</div>
@@ -197,7 +205,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
         <span><i style="background:var(--today)"></i>오늘 사용</span>
         <span><i style="background:var(--idle)"></i>오늘 없음</span>
         <span><i style="background:transparent;border:2px dashed var(--warn)"></i>카운터 미설치</span>
-        <span style="width:100%;text-align:center;color:var(--dim)">큰 원 = 분류 · 작은 원(위성) = 앱 · 위성 안 숫자 = 오늘 사용자</span>
+        <span style="width:100%;text-align:center;color:var(--dim)">큰 원 = 분류 · 작은 원(위성) = 앱 · 위성 안 숫자 = 오늘 사용자 · 위성 둘레 점 = 내부 앱(누르면 펼침)</span>
       </div>
     </section>
   </div>
@@ -268,7 +276,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
 <script>
 // ===== 설정(CONFIG) =====
 const CONFIG = {
-  version: '1.3.2', updated: '2026-11-13', org: '구리소방서 · gurifire',
+  version: '1.4.0', updated: '2026-11-14', org: '구리소방서 · gurifire',
   owner: 'gurifire',
   // 관제할 계정·조직 (첫 번째가 오비트 본체 계정). 새 조직을 만들면 여기에 추가
   owners: ['gurifire', 'lkstkd', 'ilsangtool'],
@@ -292,6 +300,8 @@ const CONFIG = {
   assign: { '-app': 'response', 'guri-apart': 'response', 'fire-construction': 'prevent', 'lkstkd': 'life' },
   // 다른 계정·조직으로 옮긴 앱의 실제 주소 (config.json의 links가 있으면 함께 적용)
   links: { 'lkstkd': { page: 'https://lkstkd.github.io/lkstkd/', repo: 'https://github.com/lkstkd/lkstkd' } },
+  // 내부 앱(폴더 앱) 가지를 표시하지 않을 저장소 이름
+  subOff: [],
   pollSec: 20, liveSec: 150, repoCacheMin: 10, chartDays: 14
 };
 
@@ -338,7 +348,8 @@ let S = {
   sel: store.get('sel', null),
   pings: [],
   installed: {},                        // {app: true/false} 페이지 확인 결과
-  allRepos: store.get('allRepos', null) // Pages 여부와 상관없는 전체 공개 저장소
+  allRepos: store.get('allRepos', null), // Pages 여부와 상관없는 전체 공개 저장소
+  subs: store.get('subs', {})           // {저장소: {pushed, list:[폴더]}} 내부 앱 목록
 };
 
 // ===== 공용 설정(config.json) =====
@@ -428,6 +439,53 @@ function appMeta(name) {
   return { short: name.replace(/^-/, '').slice(0, 8) || name, full: name };
 }
 
+
+// ===== 내부 앱(폴더 앱) 자동 발견 =====
+// 저장소 안에 '폴더/index.html'이 2개 이상이면 내부 앱으로 보고 그 앱 위성에서 가지로 표시 (예: 일상툴 tools/date-calc/)
+// GitHub 조회는 저장소에 새 배포가 있을 때만 다시 함 → 조회 한도 부담 적음
+const SUB_SKIP = ['data', 'assets', 'asset', 'img', 'images', 'css', 'js', 'lib', 'libs', 'dist', 'build', 'node_modules', 'docs', 'test', 'tests', 'backup', 'old', 'archive', 'static', 'fonts', 'icons', 'vendor'];
+const subKey = (n, f) => `${n}~${f}`;
+const subOff = n => (CONFIG.subOff || []).includes(n);
+async function loadSubs() {
+  for (const r of (S.repos || [])) {
+    if (subOff(r.name)) continue;
+    const c = S.subs[r.name];
+    if (c && c.pushed === r.pushed) continue;
+    try {
+      const res = await fetchT(`https://api.github.com/repos/${r.owner || ownerOf(r.name)}/${encodeURIComponent(r.name)}/git/trees/${encodeURIComponent(r.branch || 'main')}?recursive=1`, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!res.ok) continue; // 한도 초과 등은 다음 주기에 다시
+      const j = await res.json();
+      const list = (j.tree || []).map(t => (t.type === 'blob' && /^([^\/_.][^\/]*)\/index\.html$/.exec(t.path) || [])[1])
+        .filter(f => f && !SUB_SKIP.includes(f.toLowerCase()) && /^[A-Za-z0-9_-]{1,40}$/.test(f)).sort();
+      S.subs[r.name] = { pushed: r.pushed, list: list.length >= 2 ? list : [] };
+      store.set('subs', S.subs); dirty = true;
+    } catch {}
+  }
+  Object.keys(S.subs).forEach(n => (S.subs[n].list || []).forEach(f => checkSub(n, f)));
+}
+const subChecked = {};
+async function checkSub(n, f) {
+  const k = subKey(n, f);
+  if (subChecked[k]) return; subChecked[k] = true;
+  try {
+    const r = await fetchT(pageOf(n) + f + '/', { cache: 'no-store' }, 8000);
+    if (!r.ok) { subChecked[k] = false; return; }
+    const html = await r.text();
+    S.installed[k] = html.includes('orbit/track.js');
+    const m = html.match(/<title>([^<]{1,160})<\/title>/i);
+    if (m) { S.titles[k] = m[1].trim(); store.set('titles', S.titles); }
+    dirty = true;
+  } catch { subChecked[k] = false; }
+}
+function subMeta(k) {
+  if (SET.names[k]) return SET.names[k];
+  const t = S.titles[k], f = k.split('~')[1];
+  if (!t) return { short: f.slice(0, 6), full: f };
+  const full = t.split(/\s[-–|]\s|\s\(/)[0].trim() || f;
+  return { short: full.split(/[·\s]/)[0].slice(0, 5), full };
+}
+const pageOfAny = n => n.includes('~') ? pageOf(n.split('~')[0]) + n.split('~')[1] + '/' : pageOf(n);
+
 // ===== 이용자 수 읽기 =====
 async function getJSON(path, query = '') {
   const r = await fetchT(`${CONFIG.db}/${path}.json${query}`);
@@ -448,7 +506,7 @@ async function poll() {
     const prev = S.apps || {};
     S.apps = apps || {}; S.daily = daily || {};
     // 새 방문 감지 → 궤도에 신호 점
-    if (S.lastPoll) Object.keys(S.apps).forEach(a => { const d = (S.apps[a].v || 0) - ((prev[a] && prev[a].v) || 0); for (let i = 0; i < Math.min(d, 5); i++) S.pings.push({ app: a, t0: performance.now() + i * 350 }); });
+    if (S.lastPoll) Object.keys(S.apps).filter(a => !a.includes('~')).forEach(a => { const d = (S.apps[a].v || 0) - ((prev[a] && prev[a].v) || 0); for (let i = 0; i < Math.min(d, 5); i++) S.pings.push({ app: a, t0: performance.now() + i * 350 }); });
     const now = Date.now(), stale = {};
     S.live = {};
     Object.keys(live || {}).forEach(a => {
@@ -469,25 +527,43 @@ async function poll() {
 }
 
 // ===== 계산 =====
+function statsOf(key) {
+  const st = (S.apps || {})[key], td = ((S.daily || {})[kstDate()] || {})[key] || {};
+  let wk = 0; for (let i = 0; i < 7; i++) wk += (((S.daily || {})[kstDate(i)] || {})[key] || {}).u || 0;
+  return { st, live: S.live[key] || 0, todayU: td.u || 0, todayV: td.v || 0, week: wk, users: (st && st.u) || 0, visits: (st && st.v) || 0, last: (st && st.last) || 0 };
+}
+function subRows(p) {
+  const c = S.subs[p.name];
+  if (!c || !c.list || !c.list.length || subOff(p.name)) return [];
+  return c.list.map(f => {
+    const k = subKey(p.name, f), x = statsOf(k);
+    return { name: k, parent: p.name, folder: f, repo: { ...p.repo, desc: '', url: `${p.repo.url || repoOf(p.name)}/tree/${p.repo.branch || 'main'}/${f}` },
+      meta: subMeta(k), cat: p.cat, tracked: S.installed[k] !== false, waiting: !x.st, ...x, isNew: false, subs: [] };
+  });
+}
 function appRows() {
   const names = new Set((S.repos || []).map(r => r.name));
-  Object.keys(S.apps || {}).forEach(a => { if (!SET.exclude.includes(a) && !HARD_EXCLUDE.includes(a) && a !== 'root') names.add(a); });
-  const today = kstDate();
+  Object.keys(S.apps || {}).forEach(a => { if (!a.includes('~') && !SET.exclude.includes(a) && !HARD_EXCLUDE.includes(a) && a !== 'root') names.add(a); });
   const rows = [...names].map(name => {
     const repo = (S.repos || []).find(r => r.name === name) || { name, desc: '', pushed: 0, url: repoOf(name) };
-    const st = (S.apps || {})[name];
-    const td = ((S.daily || {})[today] || {})[name] || {};
-    let wk = 0; for (let i = 0; i < 7; i++) wk += (((S.daily || {})[kstDate(i)] || {})[name] || {}).u || 0;
-    return {
-      name, repo, meta: appMeta(name), cat: catOf(name, repo), tracked: !!st || S.installed[name] !== false, waiting: !st,
-      live: S.live[name] || 0, todayU: td.u || 0, todayV: td.v || 0, week: wk,
-      users: (st && st.u) || 0, visits: (st && st.v) || 0, last: (st && st.last) || 0,
+    const x = statsOf(name);
+    const row = {
+      name, repo, meta: appMeta(name), cat: catOf(name, repo), tracked: !!x.st || S.installed[name] !== false, waiting: !x.st, ...x,
       isNew: repo.pushed && !SET.names[name] && (Date.now() - repo.pushed < 7 * 86400e3)
     };
+    row.subs = subRows(row);
+    return row;
   });
   // 궤도 순서는 이름 고정(위치가 흔들리지 않게), 목록은 오늘 사용자 순
   rows.sort((a, b) => a.name.localeCompare(b.name));
   return rows;
+}
+const findRow = n => ROWS.find(r => r.name === n) || ROWS.flatMap(r => r.subs).find(r => r.name === n) || null;
+// 확대 보기 대상: 내부 앱이 있는 앱이나 그 내부 앱을 고르면 그 앱의 내부 궤도를 보여줌
+function zoomRow() {
+  if (!S.sel || S.sel.startsWith('cat:')) return null;
+  const r = ROWS.find(x => x.name === S.sel.split('~')[0]);
+  return r && r.subs.length ? r : null;
 }
 const stateOf = r => !r.tracked ? 'off' : r.live > 0 ? 'live' : r.todayU > 0 ? 'today' : 'idle';
 const COLOR = { live: 'var(--live)', today: 'var(--today)', idle: 'var(--idle)', off: 'var(--warn)' };
@@ -544,6 +620,12 @@ function drawOrbit() {
   $('orbitEmpty').style.display = ROWS.length ? 'none' : 'flex';
   if (!ROWS.length && S.repos) $('orbitEmpty').textContent = 'GitHub Pages가 켜진 공개 저장소가 없습니다. 저장소 설정에서 Pages를 켜면 여기에 나타납니다.';
   svg.textContent = '';
+  const Z = zoomRow();
+  $('orbitTitle').textContent = Z ? `${Z.meta.short} 내부 앱` : '궤도 현황';
+  $('upd').style.display = Z && mob ? 'none' : '';
+  $('zoomBack').hidden = !Z;
+  if (Z) { drawZoom(svg, Z, mob, k); return; }
+  const moonX = ROWS.some(r => r.subs.length) ? (mob ? 16 : 13) : 0; // 내부 앱 가지 길이
   // 바깥 링: 오늘 경과 시간(한국 시간)
   const groups = catGroups(), nC = groups.length;
   // 폰: 글자는 키우고 도형 간격은 좁혀 화면을 꽉 채움
@@ -552,7 +634,7 @@ function drawOrbit() {
   let rc = mob ? catR + appR + 8 : Math.max(catR + appR + 12, 70);
   const RC = nC <= 1 ? 0 : hubR + rc + appR + 5 + labHW + 4; // 안쪽을 지날 때 이름표가 중앙 원에 닿지 않게
   if (nC >= 2) rc = Math.min(rc, Math.max(catR + appR + 4, RC * Math.sin(Math.PI / nC) - appR - 10));
-  const OR = Math.min(296, RC + rc + appR + 5 + labHW + 6);
+  const OR = Math.min(296, RC + rc + appR + 5 + labHW + 6 + moonX);
   const vb = Math.ceil(OR + 6); svg.setAttribute('viewBox', `${C - vb} ${C - vb} ${vb * 2} ${vb * 2}`);
   el('circle', { cx: C, cy: C, r: OR, fill: 'none', stroke: '#1C2742', 'stroke-width': 1 }, svg);
   const nowK = new Date(Date.now() + 9 * 3600e3), frac = (nowK.getUTCHours() * 60 + nowK.getUTCMinutes()) / 1440;
@@ -577,16 +659,23 @@ function drawOrbit() {
     const p = CATPOS[g.key], m = g.apps.length;
     g.apps.forEach((r, j) => {
       const st = stateOf(r), col = COLOR[st], sel = S.sel === r.name;
-      const gg = el('g', { class: 'node sat', tabindex: 0, role: 'button', 'aria-label': `${r.meta.full}, 지금 ${r.live}명, 오늘 ${r.todayU}명`, 'data-app': r.name, 'data-cx': p.x, 'data-cy': p.y, 'data-rc': rc, 'data-ph': -Math.PI / 2 + j * 2 * Math.PI / m + (j % 2 ? .25 : 0) }, svg);
+      const gg = el('g', { class: 'node sat', tabindex: 0, role: 'button', 'aria-label': `${r.meta.full}, 지금 ${r.live}명, 오늘 ${r.todayU}명${r.subs.length ? `, 내부 앱 ${r.subs.length}개(누르면 펼침)` : ''}`, 'data-app': r.name, 'data-cx': p.x, 'data-cy': p.y, 'data-rc': rc, 'data-ph': -Math.PI / 2 + j * 2 * Math.PI / m + (j % 2 ? .25 : 0) }, svg);
       if (st === 'live') {
         const pr = el('circle', { cx: 0, cy: 0, r: appR, fill: 'none', stroke: col, 'stroke-width': 2 }, gg);
         el('animate', { attributeName: 'r', from: appR, to: appR + 12 * k, dur: '2s', repeatCount: 'indefinite' }, pr);
         el('animate', { attributeName: 'opacity', from: .7, to: 0, dur: '2s', repeatCount: 'indefinite' }, pr);
       }
+      // 내부 앱 가지: 위성 둘레로 뻗은 짧은 선 + 작은 점 (색 = 내부 앱 상태)
+      const ns = r.subs.length, mo = appR + moonX - 2;
+      r.subs.forEach((sb, q) => {
+        const a = -Math.PI / 2 + q * 2 * Math.PI / ns, ux = Math.cos(a), uy = Math.sin(a);
+        el('line', { x1: ux * appR, y1: uy * appR, x2: ux * mo, y2: uy * mo, stroke: '#4A5B84', 'stroke-width': 1.2 }, gg);
+        el('circle', { cx: ux * mo, cy: uy * mo, r: mob ? 5 : 3.6, fill: COLOR[stateOf(sb)], stroke: '#0B1222', 'stroke-width': 1 }, gg);
+      });
       el('circle', { cx: 0, cy: 0, r: appR, fill: '#121C34', class: 'ring', stroke: sel ? 'var(--gold)' : col, 'stroke-width': sel ? 3.5 : 2.5, 'stroke-dasharray': st === 'off' ? '4 3' : '' }, gg);
       el('text', { x: 0, y: 4 * k, 'text-anchor': 'middle', fill: st === 'off' ? '#F5A524' : '#EEF1F7', 'font-size': 12 * k, 'font-weight': 700, class: 'num' }, gg).textContent = st === 'off' ? '!' : r.waiting ? '–' : r.todayU;
       // 이름표: 분류 중심에서 바깥쪽으로 붙어 돌아 분류 원과 겹치지 않음
-      el('text', { class: 'lbl', x: 0, y: appR + 13 * k, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#C9D1E3', 'font-size': 12 * k, 'font-weight': 600, 'paint-order': 'stroke', stroke: '#111A30', 'stroke-width': 4, 'data-hw': r.meta.short.length * 6 * k, 'data-hh': 7 * k, 'data-ar': appR + 5 }, gg).textContent = r.meta.short;
+      el('text', { class: 'lbl', x: 0, y: appR + 13 * k, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#C9D1E3', 'font-size': 12 * k, 'font-weight': 600, 'paint-order': 'stroke', stroke: '#111A30', 'stroke-width': 4, 'data-hw': r.meta.short.length * 6 * k, 'data-hh': 7 * k, 'data-ar': appR + 5 + (r.subs.length ? moonX : 0) }, gg).textContent = r.meta.short;
       gg.addEventListener('click', () => select(r.name));
       gg.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(r.name); } });
     });
@@ -613,12 +702,53 @@ function drawOrbit() {
   placeSats(performance.now());
 }
 
+// 확대 보기: 가운데 = 내부 앱을 가진 앱, 가지 끝 = 내부 앱
+function drawZoom(svg, Z, mob, k) {
+  const subs = Z.subs, n = subs.length, mr = mob ? 22 : 20;
+  const RZ = Math.max(mob ? 150 : 160, n * (mr * 2 + 16) / (2 * Math.PI));
+  const labMax = Math.min(5, Math.max(2, ...subs.map(s => s.meta.short.length))) * 6 * k;
+  const vb = Math.ceil(RZ + mr + 8 + labMax * 2 + 6); // 이름표 전체 폭까지 화면 안에
+  svg.setAttribute('viewBox', `${C - vb} ${C - vb} ${vb * 2} ${vb * 2}`);
+  POS = {}; CATPOS = {};
+  el('circle', { cx: C, cy: C, r: RZ, fill: 'none', stroke: '#24314F', 'stroke-width': 1.2, 'stroke-dasharray': '3 6' }, svg);
+  subs.forEach((s, i) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / n, x = C + Math.cos(a) * RZ, y = C + Math.sin(a) * RZ, st = stateOf(s);
+    POS[s.name] = { x, y, a };
+    el('line', { x1: C, y1: C, x2: x, y2: y, stroke: st === 'live' ? '#2A6B4A' : S.sel === s.name ? '#8A6D12' : '#2A3758', 'stroke-width': st === 'live' || S.sel === s.name ? 2.5 : 1.5 }, svg);
+  });
+  // 가운데(모 앱)
+  const hubR = mob ? 58 : 54, zs = stateOf(Z);
+  const hg = el('g', { class: 'node', tabindex: 0, role: 'button', 'aria-label': `${Z.meta.full} 전체 보기` }, svg);
+  el('circle', { cx: C, cy: C, r: hubR, fill: '#18254A', class: 'ring', stroke: S.sel === Z.name ? 'var(--gold)' : COLOR[zs], 'stroke-width': 3 }, hg);
+  el('text', { x: C, y: C + 2, 'text-anchor': 'middle', fill: '#EEF1F7', 'font-size': (Z.meta.short.length > 4 ? 13 : 16) * k, 'font-weight': 700 }, hg).textContent = Z.meta.short;
+  el('text', { x: C, y: C + 10 + 10 * k, 'text-anchor': 'middle', fill: '#D4A017', 'font-size': 10 * k }, hg).textContent = `내부 앱 ${n}개`;
+  hg.addEventListener('click', () => { S.sel = Z.name; store.set('sel', S.sel); render(); });
+  hg.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); S.sel = Z.name; store.set('sel', S.sel); render(); } });
+  // 내부 앱
+  subs.forEach(s => {
+    const p = POS[s.name], st = stateOf(s), col = COLOR[st], sel = S.sel === s.name;
+    const g = el('g', { class: 'node', tabindex: 0, role: 'button', 'aria-label': `${s.meta.full}, 지금 ${s.live}명, 오늘 ${s.todayU}명` }, svg);
+    if (st === 'live') {
+      const pr = el('circle', { cx: p.x, cy: p.y, r: mr, fill: 'none', stroke: col, 'stroke-width': 2 }, g);
+      el('animate', { attributeName: 'r', from: mr, to: mr + 12 * k, dur: '2s', repeatCount: 'indefinite' }, pr);
+      el('animate', { attributeName: 'opacity', from: .7, to: 0, dur: '2s', repeatCount: 'indefinite' }, pr);
+    }
+    el('circle', { cx: p.x, cy: p.y, r: mr, fill: '#121C34', class: 'ring', stroke: sel ? 'var(--gold)' : col, 'stroke-width': sel ? 3.5 : 2.5, 'stroke-dasharray': st === 'off' ? '4 3' : '' }, g);
+    el('text', { x: p.x, y: p.y + 4 * k, 'text-anchor': 'middle', fill: st === 'off' ? '#F5A524' : '#EEF1F7', 'font-size': 12 * k, 'font-weight': 700, class: 'num' }, g).textContent = st === 'off' ? '!' : s.waiting ? '–' : s.todayU;
+    const cx = Math.cos(p.a), cy = Math.sin(p.a), d = mr + 6 + Math.abs(cx) * s.meta.short.length * 6 * k + Math.abs(cy) * 8 * k;
+    el('text', { x: p.x + cx * d, y: p.y + cy * d, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: sel ? '#F3D66B' : '#C9D1E3', 'font-size': 12 * k, 'font-weight': 600, 'paint-order': 'stroke', stroke: '#111A30', 'stroke-width': 4 }, g).textContent = s.meta.short;
+    g.addEventListener('click', () => select(s.name));
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(s.name); } });
+  });
+  el('g', { id: 'pingLayer' }, svg);
+}
+
 function rowHTML(r) {
-  const st = stateOf(r);
-  return `<button class="row" data-app="${esc(r.name)}" aria-pressed="${r.name === S.sel}">
+  const st = stateOf(r), sub = !!r.parent;
+  return `<button class="row${sub ? ' sub' : ''}" data-app="${esc(r.name)}" aria-pressed="${r.name === S.sel}">
       <span class="dot" style="background:${COLOR[st]}"></span>
-      <span style="min-width:0"><div class="nm">${esc(r.meta.full)}${r.isNew ? '<span class="tag new">새 앱</span>' : ''}${!r.tracked ? '<span class="tag off">카운터 미설치</span>' : ''}</div>
-      <div class="sb">${esc(r.name)} · ${r.waiting && r.tracked ? '카운터 연결됨, 첫 접속 대기' : '최근 접속 ' + esc(ago(r.last))}</div></span>
+      <span style="min-width:0"><div class="nm">${sub ? '<span class="br" aria-hidden="true">└</span>' : ''}${esc(r.meta.full)}${r.isNew ? '<span class="tag new">새 앱</span>' : ''}${r.subs && r.subs.length ? `<span class="tag in">내부 앱 ${r.subs.length}</span>` : ''}${!r.tracked ? '<span class="tag off">카운터 미설치</span>' : ''}</div>
+      <div class="sb">${esc(sub ? r.folder : r.name)} · ${r.waiting && r.tracked ? (sub ? '내부 앱 집계 대기' : '카운터 연결됨, 첫 접속 대기') : '최근 접속 ' + esc(ago(r.last))}</div></span>
       <span class="nums num"><div><b style="color:${r.live ? 'var(--live)' : 'inherit'}">${r.live}</b><small>지금</small></div><div><b>${fmt(r.todayU)}</b><small>오늘</small></div><div><b>${fmt(r.users)}</b><small>누적</small></div></span>
     </button>`;
 }
@@ -628,7 +758,7 @@ function drawList() {
   $('list').innerHTML = groups.length ? groups.map(g => `
     <button class="cat-h" data-app="cat:${esc(g.key)}" aria-pressed="${S.sel === 'cat:' + g.key}">
       <span class="dot" style="background:${COLOR[catState(g)]}"></span><b>${esc(g.label)}</b><small>앱 ${g.apps.length}개 · 오늘 ${fmt(g.apps.reduce((a, r) => a + r.todayU, 0))}명</small>
-    </button>${[...g.apps].sort(byUse).map(rowHTML).join('')}`).join('') : '<p class="note">표시할 앱이 없습니다.</p>';
+    </button>${[...g.apps].sort(byUse).map(r => rowHTML(r) + (r.subs.length && S.sel && S.sel.split('~')[0] === r.name ? [...r.subs].sort(byUse).map(rowHTML).join('') : '')).join('')}`).join('') : '<p class="note">표시할 앱이 없습니다.</p>';
 }
 
 function drawDetail() {
@@ -652,7 +782,7 @@ function drawDetail() {
       return;
     }
   }
-  const r = ROWS.find(x => x.name === S.sel) || null;
+  const r = (S.sel && findRow(S.sel)) || null;
   box.classList.toggle('idle', !r);
   if (!r) {
     box.innerHTML = `<div class="ph"><h2>상세</h2></div><p class="note" style="margin:0">궤도의 분류(큰 원)나 앱 위성(작은 원)을 누르면 이용 추이와 바로가기가 여기에 나옵니다.</p>`;
@@ -660,10 +790,10 @@ function drawDetail() {
   }
   const st = stateOf(r);
   const cat = CATS_ALL().find(c => c.key === r.cat);
-  const pageUrl = pageOf(r.name);
+  const pageUrl = pageOfAny(r.name), par = r.parent ? findRow(r.parent) : null;
   box.innerHTML = `
     <div class="dt-head"><span class="dot" style="background:${COLOR[st]};margin-top:8px"></span>
-      <div style="min-width:0"><h3>${esc(r.meta.full)}</h3><p>${esc(cat ? cat.label : '')} · ${esc(r.name)}${r.repo.desc ? ' · ' + esc(r.repo.desc) : ''}</p></div></div>
+      <div style="min-width:0"><h3>${esc(r.meta.full)}</h3><p>${par ? `${esc(par.meta.full)} 내부 앱 · ${esc(r.folder)}` : `${esc(cat ? cat.label : '')} · ${esc(r.name)}${r.repo.desc ? ' · ' + esc(r.repo.desc) : ''}`}</p></div></div>
     ${r.tracked ? `
     <div class="grid3">
       <div class="cell"><small>지금 접속</small><b class="num" style="color:${r.live ? 'var(--live)' : 'inherit'}">${r.live}</b></div>
@@ -676,7 +806,8 @@ function drawDetail() {
       <div class="cell wide"><span>최근 배포</span><b>${esc(ago(r.repo.pushed))}</b></div>
     </div>
     <div class="chart" aria-label="최근 ${CONFIG.chartDays}일 일별 사용자">${chart(r.name)}</div>
-    <p class="note">7일 사용자는 일별 사용자 수의 합입니다(같은 기기가 여러 날 오면 날마다 셉니다).</p>`
+    <p class="note">7일 사용자는 일별 사용자 수의 합입니다(같은 기기가 여러 날 오면 날마다 셉니다).${r.subs && r.subs.length ? ' 이 앱 숫자는 내부 앱 방문을 모두 합친 값입니다.' : ''}${par ? ' 내부 앱별 숫자는 카운터 v1.1 적용(2026. 11. 14.) 이후부터 집계됩니다.' : ''}</p>
+    ${r.subs && r.subs.length ? `<h4 class="dt-sub">내부 앱 ${r.subs.length}개</h4><div class="list">${[...r.subs].sort(byUse).map(rowHTML).join('')}</div>` : ''}`
     : `<p class="note" style="margin:0">이 앱에는 아직 이용자 카운터가 없습니다. 저장소의 index.html에서 <code>&lt;/body&gt;</code> 바로 앞에 아래 한 줄을 넣고 배포하면 몇 분 안에 숫자가 나타납니다.</p>
     <div class="snip">${esc(SNIPPET)}</div>
     <div class="cell wide" style="margin-top:8px"><span>최근 배포</span><b>${esc(ago(r.repo.pushed))}</b></div>`}
@@ -685,6 +816,8 @@ function drawDetail() {
       ${r.tracked ? `<a class="btn" href="${esc(r.repo.url)}" target="_blank" rel="noopener">저장소</a>` : `<button class="btn" id="btnCopy2">한 줄 복사</button>`}
     </div>`;
   const b2 = $('btnCopy2'); if (b2) b2.addEventListener('click', copySnippet);
+  box.querySelectorAll('.list [data-app]').forEach(b => b.addEventListener('click', () => select(b.dataset.app)));
+  if (par) { const bk = document.createElement('button'); bk.className = 'link'; bk.textContent = `← ${par.meta.full} 전체`; bk.addEventListener('click', () => select(par.name)); box.prepend(bk); }
 }
 
 function chart(name) {
@@ -1000,7 +1133,14 @@ async function checkUpdate() {
 }
 
 // ===== 이벤트 =====
-function select(name) { S.sel = S.sel === name ? null : name; store.set('sel', S.sel); render(); if (S.sel && innerWidth < 960) $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+function select(name) {
+  S.sel = S.sel === name ? null : name; store.set('sel', S.sel); render();
+  if (!S.sel || innerWidth >= 960) return;
+  const r = findRow(S.sel);
+  // 내부 앱이 있는 앱을 고르면 펼쳐진 궤도를, 그 밖에는 상세를 보여줌
+  (r && r.subs && r.subs.length ? document.querySelector('.p-orbit') : $('detail')).scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+$('zoomBack').addEventListener('click', () => { S.sel = null; store.set('sel', null); render(); });
 $('list').addEventListener('click', e => { const b = e.target.closest('[data-app]'); if (b) select(b.dataset.app); });
 async function copySnippet() { try { await navigator.clipboard.writeText(SNIPPET); toast('복사했습니다'); } catch { toast('복사가 막혀 있습니다. 글자를 길게 눌러 복사하세요'); } }
 $('btnCopySnip').addEventListener('click', copySnippet);
@@ -1027,9 +1167,9 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) { po
   const tick = () => { const d = new Date(Date.now() + 9 * 3600e3); $('clock').textContent = d.toISOString().slice(11, 16); };
   tick(); setInterval(tick, 10000);
   render(); requestAnimationFrame(animate);
-  await loadSettings(); await loadRepos(false); deriveRepos(); (S.repos || []).forEach(x => checkPage(x.name)); render();
+  await loadSettings(); await loadRepos(false); deriveRepos(); (S.repos || []).forEach(x => checkPage(x.name)); render(); loadSubs();
   await poll(); render();
-  setInterval(async () => { if (!document.hidden) { await loadRepos(false); (S.repos || []).forEach(x => checkPage(x.name)); await poll(); } }, CONFIG.pollSec * 1000);
+  setInterval(async () => { if (!document.hidden) { await loadRepos(false); (S.repos || []).forEach(x => checkPage(x.name)); loadSubs(); await poll(); } }, CONFIG.pollSec * 1000);
   setInterval(() => { if (dirty) { dirty = false; render(); } }, 1000);
   setInterval(() => { if (!document.hidden) loadSettings(); }, 5 * 60e3);
   setTimeout(checkUpdate, 5000); setInterval(() => { if (!document.hidden) checkUpdate(); }, 5 * 60e3);
