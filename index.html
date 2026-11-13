@@ -152,6 +152,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .mcat{display:flex;gap:6px;align-items:center}
 .madd{min-width:44px;min-height:44px;border-radius:10px;border:1px solid var(--line);background:#0E1730;color:var(--gold);font-size:22px;font-weight:700;line-height:1;cursor:pointer}
 .madd:disabled{opacity:.45;cursor:not-allowed}
+.madd.mdel{color:var(--danger)}
 .allok{margin:0 0 6px;font-size:14px;color:#8BEBB5}
 .link{background:none;border:0;padding:4px 2px;color:var(--gold);text-decoration:underline;font-size:13px}
 .fld{display:block;margin-top:12px}.fld span{display:block;font-size:13px;color:var(--sub);margin-bottom:4px}
@@ -267,7 +268,7 @@ footer{max-width:1280px;margin:0 auto;padding:0 16px 24px;font-size:12px;color:v
 <script>
 // ===== 설정(CONFIG) =====
 const CONFIG = {
-  version: '1.3.1', updated: '2026-11-13', org: '구리소방서 · gurifire',
+  version: '1.3.2', updated: '2026-11-13', org: '구리소방서 · gurifire',
   owner: 'gurifire',
   // 관제할 계정·조직 (첫 번째가 오비트 본체 계정). 새 조직을 만들면 여기에 추가
   owners: ['gurifire', 'lkstkd', 'ilsangtool'],
@@ -843,7 +844,7 @@ function drawMgr() {
     return `<div class="mrow${on ? ' on' : ''}">
       <label class="mchk"><input type="checkbox" data-sel="${esc(n)}"${on ? ' checked' : ''}${dis}>
         <span class="mi"><b>${esc(meta.full)}</b><small>${esc(sub)}</small><span class="chips">${chips.join('')}</span></span></label>
-      <div class="mcat"><select class="msel" data-cat="${esc(n)}" aria-label="${esc(meta.full)} 분류"${dis}>${opts(cat)}</select><button class="madd" type="button" data-addcat="${esc(n)}" title="새 분류 추가" aria-label="새 분류 추가"${dis}>＋</button></div>
+      <div class="mcat"><select class="msel" data-cat="${esc(n)}" aria-label="${esc(meta.full)} 분류"${dis}>${opts(cat)}</select><button class="madd" type="button" data-addcat="${esc(n)}" title="새 분류 추가" aria-label="새 분류 추가"${dis}>＋</button><button class="madd mdel" type="button" data-delcat="${esc(n)}" title="선택한 분류 삭제" aria-label="선택한 분류 삭제"${cat === 'etc' || MG.busy ? ' disabled' : ''}>－</button></div>
       ${res ? `<div class="mres ${res.ok === true ? 'ok' : res.ok === false ? 'err' : ''}" role="status">${esc(res.text)}</div>` : ''}
     </div>`;
   };
@@ -944,7 +945,7 @@ $('mgrBody').addEventListener('change', e => {
   else if (t.dataset.cat) { MG.cat[t.dataset.cat] = t.value; MG.sel.add(t.dataset.cat); drawMgr(); } // 분류를 바꾸면 자동 체크
 });
 $('mgrBody').addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.g) d.open ? MG.open.add(d.dataset.g) : MG.open.delete(d.dataset.g); }, true);
-$('mgrBody').addEventListener('click', e => { const a = e.target.closest('[data-addcat]'); if (a) { addCategory(a.dataset.addcat); return; } const b = e.target.closest('[data-act]'); if (!b) return; if (b.dataset.act === 'token') openToken(); else runMgr(b.dataset.act); });
+$('mgrBody').addEventListener('click', e => { const a = e.target.closest('[data-addcat]'); if (a) { addCategory(a.dataset.addcat); return; } const dl = e.target.closest('[data-delcat]'); if (dl) { delCategory(dl.dataset.delcat); return; } const b = e.target.closest('[data-act]'); if (!b) return; if (b.dataset.act === 'token') openToken(); else runMgr(b.dataset.act); });
 
 // ===== 분류 추가 (분류 선택칸 옆 ＋) =====
 const newKey = () => 'c' + Date.now().toString(36).slice(-6);
@@ -963,6 +964,27 @@ async function addCategory(n) {
     MG.cat[n] = key; MG.sel.add(n);
     toast(`"${label}" 분류를 추가했습니다. [선택 반영]을 누르면 이 앱이 옮겨집니다`);
   } catch (e) { toast('추가 실패: ' + (e && e.message === 'max' ? `분류는 최대 ${CAT_MAX}개입니다` : ghErrText(e))); }
+  MG.busy = false; mgrHTML = ''; drawMgr(); dirty = true;
+}
+
+async function delCategory(n) {
+  if (MG.busy) return;
+  const sel = document.querySelector(`select[data-cat="${CSS.escape(n)}"]`);
+  const key = sel ? sel.value : '', cat = SET.categories.find(c => c.key === key);
+  if (!cat) { toast('미분류는 삭제할 수 없습니다'); return; }
+  if (!getToken()) { toast('분류를 삭제하려면 관리자 토큰을 먼저 등록하세요'); openToken(); return; }
+  const apps = ROWS.filter(r => r.cat === key).map(r => r.meta.short);
+  if (!confirm(`"${cat.label}" 분류를 삭제할까요?` + (apps.length ? `\n\n이 분류의 앱 ${apps.length}개(${apps.join(', ')})는 키워드에 맞는 분류로 다시 배치되고, 맞는 곳이 없으면 미분류로 갑니다.` : '\n\n이 분류에 속한 앱은 없습니다.'))) return;
+  if (!navigator.onLine) { toast('오프라인에서는 삭제할 수 없습니다'); return; }
+  MG.busy = true; mgrHTML = ''; drawMgr();
+  try {
+    await saveConfig(d => {
+      d.categories = d.categories.filter(c => c.key !== key);
+      Object.keys(d.assign).forEach(a => { if (d.assign[a] === key) delete d.assign[a]; });
+    });
+    Object.keys(MG.cat).forEach(a => { if (MG.cat[a] === key) delete MG.cat[a]; });
+    toast(`"${cat.label}" 분류를 삭제했습니다`);
+  } catch (e) { toast('삭제 실패: ' + ghErrText(e)); }
   MG.busy = false; mgrHTML = ''; drawMgr(); dirty = true;
 }
 
