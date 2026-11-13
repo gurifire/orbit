@@ -284,6 +284,8 @@ const CONFIG = {
     { key: 'life',     label: '생활·외부', match: '태권도|가계부|생활|개인|도장' }
   ],
   assign: { '-app': 'response', 'guri-apart': 'response', 'fire-construction': 'prevent', 'lkstkd': 'life' },
+  // 다른 계정·조직으로 옮긴 앱의 실제 주소 (config.json의 links가 있으면 함께 적용)
+  links: { 'lkstkd': { page: 'https://lkstkd.github.io/lkstkd/', repo: 'https://github.com/lkstkd/lkstkd' } },
   pollSec: 20, liveSec: 150, repoCacheMin: 10, chartDays: 14
 };
 
@@ -336,7 +338,9 @@ let S = {
 // ===== 공용 설정(config.json) =====
 // 제외 목록·분류 지정·앱 이름은 orbit 저장소 config.json에 저장 → 모든 기기가 같은 설정을 봄 (관리 화면에서 수정)
 const HARD_EXCLUDE = ['orbit', `${CONFIG.owner}.github.io`];
-let SET = { exclude: CONFIG.exclude.slice(), assign: { ...CONFIG.assign }, names: { ...CONFIG.names } };
+let SET = { exclude: CONFIG.exclude.slice(), assign: { ...CONFIG.assign }, names: { ...CONFIG.names }, links: { ...CONFIG.links } };
+const pageOf = n => (SET.links[n] && SET.links[n].page) || `https://${CONFIG.owner}.github.io/${encodeURIComponent(n)}/`;
+const repoOf = n => (SET.links[n] && SET.links[n].repo) || `https://github.com/${CONFIG.owner}/${n}`;
 const cfgCore = d => JSON.stringify({ e: [...(d.exclude || [])].sort(), a: d.assign || {}, n: d.names || {} });
 function deriveRepos() { if (S.allRepos) S.repos = S.allRepos.filter(x => x.pages && !SET.exclude.includes(x.name)); }
 function applySettings(d) {
@@ -344,7 +348,8 @@ function applySettings(d) {
   SET = {
     exclude: Array.isArray(d.exclude) ? d.exclude.filter(x => typeof x === 'string') : SET.exclude,
     assign: d.assign && typeof d.assign === 'object' ? d.assign : SET.assign,
-    names: d.names && typeof d.names === 'object' ? d.names : SET.names
+    names: d.names && typeof d.names === 'object' ? d.names : SET.names,
+    links: d.links && typeof d.links === 'object' ? { ...CONFIG.links, ...d.links } : SET.links
   };
   deriveRepos(); dirty = true;
 }
@@ -378,7 +383,7 @@ async function loadRepos(force) {
   } catch (e) {
     S.repoErr = (e.message === 'limit' ? 'GitHub 조회 한도(시간당 60회)에 걸렸습니다. ' : '저장소 목록을 새로 받지 못했습니다. ')
       + (S.repos ? '마지막으로 받은 목록을 보여줍니다.' : '기본 앱 4개로 표시하고 잠시 뒤 다시 시도합니다.');
-    if (!S.repos) S.repos = Object.keys(SET.names).map(n => ({ name: n, desc: '', pushed: 0, url: `https://github.com/${CONFIG.owner}/${n}` }));
+    if (!S.repos) S.repos = Object.keys(SET.names).map(n => ({ name: n, desc: '', pushed: 0, url: repoOf(n) }));
   }
 }
 // 각 앱 페이지를 열어 제목과 카운터 설치 여부(track.js 포함 여부)를 확인 (같은 주소 안이라 허용됨)
@@ -386,7 +391,7 @@ const checked = {}, FRESH = {}, PAGES_ON = {}; // FRESH: 관리 화면에서 방
 async function checkPage(name) {
   if (checked[name]) return; checked[name] = true;
   try {
-    const r = await fetchT(`/${encodeURIComponent(name)}/`, { cache: 'no-store' }, 8000);
+    const r = await fetchT((SET.links[name] && SET.links[name].page) || `/${encodeURIComponent(name)}/`, { cache: 'no-store' }, 8000);
     if (!r.ok) { checked[name] = false; return; }
     const html = await r.text();
     S.installed[name] = html.includes('orbit/track.js') || (Date.now() - (FRESH[name] || 0) < 5 * 60e3);
@@ -449,7 +454,7 @@ function appRows() {
   Object.keys(S.apps || {}).forEach(a => { if (!SET.exclude.includes(a) && !HARD_EXCLUDE.includes(a) && a !== 'root') names.add(a); });
   const today = kstDate();
   const rows = [...names].map(name => {
-    const repo = (S.repos || []).find(r => r.name === name) || { name, desc: '', pushed: 0, url: `https://github.com/${CONFIG.owner}/${name}` };
+    const repo = (S.repos || []).find(r => r.name === name) || { name, desc: '', pushed: 0, url: repoOf(name) };
     const st = (S.apps || {})[name];
     const td = ((S.daily || {})[today] || {})[name] || {};
     let wk = 0; for (let i = 0; i < 7; i++) wk += (((S.daily || {})[kstDate(i)] || {})[name] || {}).u || 0;
@@ -634,7 +639,7 @@ function drawDetail() {
   }
   const st = stateOf(r);
   const cat = CATS_ALL().find(c => c.key === r.cat);
-  const pageUrl = `https://${CONFIG.owner}.github.io/${encodeURIComponent(r.name)}/`;
+  const pageUrl = pageOf(r.name);
   box.innerHTML = `
     <div class="dt-head"><span class="dot" style="background:${COLOR[st]};margin-top:8px"></span>
       <div style="min-width:0"><h3>${esc(r.meta.full)}</h3><p>${esc(cat ? cat.label : '')} · ${esc(r.name)}${r.repo.desc ? ' · ' + esc(r.repo.desc) : ''}</p></div></div>
@@ -775,7 +780,7 @@ async function saveConfig(mutate) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const f = await ghFile('orbit', 'config.json', 'main');
     let d = {}; if (f) { try { d = JSON.parse(f.text); } catch {} }
-    d = { exclude: Array.isArray(d.exclude) ? d.exclude : SET.exclude.slice(), assign: d.assign || { ...SET.assign }, names: d.names || { ...SET.names } };
+    d = { exclude: Array.isArray(d.exclude) ? d.exclude : SET.exclude.slice(), assign: d.assign || { ...SET.assign }, names: d.names || { ...SET.names }, links: d.links || { ...SET.links } };
     mutate(d);
     d.exclude = [...new Set(d.exclude)].sort();
     d.updated = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');

@@ -29,5 +29,11 @@
       "full": "긴급구조지원반 체크리스트"
     }
   },
-  "updated": "2026-11-13 11:04"
+  "updated": "2026-11-13 11:04",
+  "links": {
+    "lkstkd": {
+      "page": "https://lkstkd.github.io/lkstkd/",
+      "repo": "https://github.com/lkstkd/lkstkd"
+    }
+  }
 }
