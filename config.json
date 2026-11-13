@@ -1,6 +1,5 @@
 {
   "exclude": [
-    "HOME_FINANCE",
     "guri-checklist",
     "none",
     "stock"
@@ -9,13 +8,26 @@
     "-app": "response",
     "guri-apart": "response",
     "fire-construction": "prevent",
-    "lkstkd": "life"
+    "lkstkd": "life",
+    "HOME_FINANCE": "etc"
   },
   "names": {
-    "lkstkd": { "short": "태권도", "full": "경희 이기성 태권도" },
-    "fire-construction": { "short": "건축", "full": "소방시설 검토 도우미" },
-    "guri-apart": { "short": "아파트", "full": "구리시 공동주택 소방시설 지도" },
-    "-app": { "short": "지원반", "full": "긴급구조지원반 체크리스트" }
+    "lkstkd": {
+      "short": "태권도",
+      "full": "경희 이기성 태권도"
+    },
+    "fire-construction": {
+      "short": "건축",
+      "full": "소방시설 검토 도우미"
+    },
+    "guri-apart": {
+      "short": "아파트",
+      "full": "구리시 공동주택 소방시설 지도"
+    },
+    "-app": {
+      "short": "지원반",
+      "full": "긴급구조지원반 체크리스트"
+    }
   },
-  "updated": "2026-11-13 10:50"
+  "updated": "2026-11-13 11:02"
 }
