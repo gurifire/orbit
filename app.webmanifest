@@ -1,6 +1,6 @@
 {
-  "name": "앱 관제 오비트",
-  "short_name": "앱 관제",
+  "name": "앱 운영 관리",
+  "short_name": "앱 운영 관리",
   "start_url": "./",
   "scope": "./",
   "display": "browser",
@@ -8,19 +8,19 @@
   "theme_color": "#0B1222",
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "icons/icon-192-v2.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "icons/icon-512-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-maskable-512.png",
+      "src": "icons/icon-maskable-512-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
